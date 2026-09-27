@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v17';
+const VERSION = 'v18';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -111,7 +111,8 @@ const CONFIG = {
   DIV_NEED: 30,                   
   
   BARR_HP: 40,                    
-  BARR_PER_UNIT: 16,                  
+  BARR_PER_UNIT: 16,
+  TIRE_PER: 16,                   
   
   WALL_HP: 25,                    
   
@@ -581,6 +582,8 @@ function slotRed(g) {
   return { type: 'add', v: -k, max: Infinity, good: false, hitT: 0 };   
 }
 
+
+function tireCost(t) { return Math.max(0, Math.ceil(t.hp / CONFIG.TIRE_PER)); }
 function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * (g.chunk || 0)) * g.mul * (m || 1)); return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
 function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
@@ -672,13 +675,21 @@ function update(g, dt) {
       row.done = true; g.gatesPassed++;
       const li = laneOf(g.lx), sl = row.lanes[li];
       row.picked = li;
-      if (sl.type === 'tire' && sl.hp > 0) {
-        const cost = Math.ceil(sl.hp / (C.BARR_PER_UNIT * enemyMul(g)));
-        g.stats.lostBarr += cost;
-        if (!SIM) { burst(laneX(li), row.y, '#555', 24); shake(8); }
-        loseUnits(g, cost, 'lostObst', g.lx, row.y - 20);
+      
+      for (let i = 0; i < 3; i++) {
+        const t = row.lanes[i];
+        if (t.type !== 'tire' || t.hp <= 0) continue;
+        let inLane = 0;
+        for (const u of g.units) if (laneOf(u.x) === i) inLane += u.w;
+        if (inLane <= 0) continue;
+        const cost = tireCost(t), lost = Math.min(inLane, cost, g.N);
+        t.hp = lost >= cost ? 0 : t.hp - lost * C.TIRE_PER;
+        g.stats.lostBarr += lost;
+        if (!SIM) { burst(laneX(i), row.y, '#555', 24); shake(8); popText(laneX(i), row.y - 30, '−' + lost, '#ff5a6a', 24); }
+        loseUnits(g, lost, 'lostObst', laneX(i), row.y - 20);
         if (g.over) return;
-      } else if (sl.type !== 'tire' && sl.type !== 'empty') {
+      }
+      if (sl.type !== 'tire' && sl.type !== 'empty') {
         applyGate(g, sl);
         if (!SIM) { popText(g.lx, C.LEADER_Y - 40, gateLabel(sl), sl.good ? '#fff' : '#ff5a6a'); sfx(sl.good ? 'gate' : 'bad'); }
       }
@@ -1028,7 +1039,7 @@ function botStep(g, bot, st) {
       let v = -enemyIn(i) * 1.5;
       if (row) {
         const sl = row.lanes[i];
-        const val = sl.type === 'empty' ? 0 : sl.type === 'tire' ? (sl.hp > 0 ? -Math.ceil(sl.hp / (C.BARR_PER_UNIT * enemyMul(g))) : 0)
+        const val = sl.type === 'empty' ? 0 : sl.type === 'tire' ? -tireCost(sl)
           : sl.type === 'mul' ? g.N * (sl.v - 1) : sl.type === 'div' ? -g.N / 2 : sl.v;
         const far = row.y < C.LEADER_Y - 190;
         v += far && (sl.type === 'tire' || !sl.good) ? val * 0.3 + 10 : val;
@@ -1292,7 +1303,7 @@ function drawRows(g, dt) {
           ctx.strokeStyle = '#3a3f4e'; ctx.lineWidth = 2; ctx.stroke();
         }
         ctx.fillStyle = '#6b7080'; ctx.beginPath(); ctx.ellipse(cx, row.y - 6, rw * 0.45, 4, 0, 0, 6.28); ctx.fill();
-        txt(String(Math.ceil(sl.hp * CONFIG.TIRE_SHOW)), cx, row.y + 24, sl.hitT > 0 ? 18 : 16, '#ff9a5a');
+        txt(String(tireCost(sl)), cx, row.y + 24, sl.hitT > 0 ? 20 : 18, '#ff9a5a');   
         continue;
       }
       drawGateSide(x0, x1, row.y, sl, row.done && row.picked !== i, dt);

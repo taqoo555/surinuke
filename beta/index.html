@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v40';
+const VERSION = 'v41';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -284,12 +284,12 @@ function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, 
 
 
 const STAGES = [
-  { name: 'FIRST STEPS',  lane: 0.20, wall: 0.10, wide: 0.15, tire: 0.20, move: 0.3 },
-  { name: 'MOVING GATES', lane: 0.10, wall: 0.05, wide: 0.10, tire: 0.10, move: 1.0 },
-  { name: 'POWER LANE',   lane: 0.75, wall: 0.00, wide: 0.10, tire: 0.20, move: 0.5 },
-  { name: 'BLACK WALLS',  lane: 0.10, wall: 0.60, wide: 0.10, tire: 0.20, move: 0.5 },
-  { name: 'THE HORDE',    lane: 0.15, wall: 0.10, wide: 0.45, tire: 0.10, move: 0.5 },
-  { name: 'TIRE FIELD',   lane: 0.10, wall: 0.10, wide: 0.10, tire: 0.45, move: 0.5 },
+  { name: 'FIRST STEPS',  lane: 0.20, wall: 0.10, wide: 0.15, tire: 0.20, move: 0.3, scene: 'bridge' },   
+  { name: 'MOVING GATES', lane: 0.10, wall: 0.05, wide: 0.10, tire: 0.10, move: 1.0, scene: 'city' },
+  { name: 'POWER LANE',   lane: 0.75, wall: 0.00, wide: 0.10, tire: 0.20, move: 0.5, scene: 'bridge' },
+  { name: 'BLACK WALLS',  lane: 0.10, wall: 0.60, wide: 0.10, tire: 0.20, move: 0.5, scene: 'city' },
+  { name: 'THE HORDE',    lane: 0.15, wall: 0.10, wide: 0.45, tire: 0.10, move: 0.5, scene: 'city' },
+  { name: 'TIRE FIELD',   lane: 0.10, wall: 0.10, wide: 0.10, tire: 0.45, move: 0.5, scene: 'bridge' },
 ];
 function stageOf(level) { return STAGES[(level - 1) % STAGES.length]; }
 
@@ -1226,6 +1226,8 @@ function init3D() {
     const road = new T.Mesh(new T.PlaneGeometry(roadW, roadL), M(0xffffff, { map: tex }));
     road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -roadL / 2 + 12); scene3.add(road);
     
+    
+    let c0 = scene3.children.length;
     const ground = new T.Mesh(new T.PlaneGeometry(600, roadL + 200), M(0x8cc86e)); ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.03, -roadL / 2 + 12); ground.receiveShadow = true; scene3.add(ground);
     for (const sx of [-1, 1]) {   
       const walk = new T.Mesh(new T.BoxGeometry(3, 0.12, roadL), M(0xd4d2c8)); walk.position.set(sx * (roadW / 2 + 1.5), 0.06, -roadL / 2 + 12); walk.receiveShadow = true; scene3.add(walk);
@@ -1273,6 +1275,38 @@ function init3D() {
       gr.userData = { x: side * (roadW / 2 + 3.4 + dep / 2), z0: Math.floor(i / 2) * 11 + (side > 0 ? 5 : 0) };
       scene3.add(gr); lots.push(gr);
     }
+    const citySet = new T.Group(); scene3.children.slice(c0).forEach(o => citySet.add(o)); scene3.add(citySet);
+    c0 = scene3.children.length;
+    const water = new T.Mesh(new T.PlaneGeometry(600, roadL + 200), M(0x3a8fd8));    water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
+    for (const sx of [-1, 1]) {   
+      const rail = new T.Mesh(new T.BoxGeometry(0.25, 0.25, roadL), M(0x6f7ba8)); rail.position.set(sx * (roadW / 2 + 0.15), 0.9, -roadL / 2 + 12); scene3.add(rail);
+      const side = new T.Mesh(new T.BoxGeometry(0.4, 1.2, roadL), M(0x39436a)); side.position.set(sx * (roadW / 2 + 0.2), -0.6, -roadL / 2 + 12); scene3.add(side);
+    }
+    const railPostIM = new T.InstancedMesh(new T.BoxGeometry(0.22, 0.9, 0.22), M(0x8a96c8), 110); scene3.add(railPostIM);
+    
+    const towers = [];
+    const cable = (a, b, mat) => { const d = b.clone().sub(a), m = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, d.length(), 5), mat);
+      m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), d.normalize()); return m; };
+    const towerMat = M(0xd8dde8), cableMat = M(0x9aa3b8);
+    for (let i = 0; i < 5; i++) {
+      const tg = new T.Group(), hx = roadW / 2 + 0.9;
+      for (const sx2 of [-1, 1]) {
+        const col = new T.Mesh(new T.BoxGeometry(0.9, 28, 0.9), towerMat); col.position.set(sx2 * hx, 13, 0); tg.add(col);
+        for (const dz of [-14, -7, 7, 14]) tg.add(cable(new T.Vector3(sx2 * hx, 24, 0), new T.Vector3(sx2 * (roadW / 2 + 0.15), 1, dz), cableMat));
+      }
+      const beam = new T.Mesh(new T.BoxGeometry(roadW + 2.7, 0.9, 0.9), towerMat); beam.position.set(0, 26.5, 0); tg.add(beam);   
+      tg.traverse(o => { if (o.isMesh) o.castShadow = false; });
+      scene3.add(tg); towers.push(tg);
+    }
+    const islands = [];
+    for (let i = 0; i < 10; i++) {
+      const ig = new T.Group(), rr2 = 5 + (i * 37 % 7), hh = 3 + (i * 53 % 5);
+      const sand = new T.Mesh(new T.CylinderGeometry(rr2 * 1.15, rr2 * 1.25, 0.6, 9), M(0xe8d28a)); sand.position.y = -1.1; ig.add(sand);
+      const hill = new T.Mesh(new T.ConeGeometry(rr2, hh, 8), M(i % 3 ? 0x5aa34a : 0x4b8f3f)); hill.position.y = -1 + hh / 2; ig.add(hill);
+      ig.userData = { x: (i % 2 ? 1 : -1) * (26 + (i * 29 % 45)), z0: -20 - (i * 61 % 150) };
+      scene3.add(ig); islands.push(ig);
+    }
+    const bridgeSet = new T.Group(); scene3.children.slice(c0).forEach(o => bridgeSet.add(o)); scene3.add(bridgeSet);
     const clouds = [];
     for (let i = 0; i < 9; i++) {
       const c = new T.Mesh(new T.SphereGeometry(1, 10, 8), B(0xffffff, { transparent: true, opacity: 0.9 }));
@@ -1305,9 +1339,13 @@ function init3D() {
     const walls = pool(() => new T.Mesh(box, M(0x0d0f16)));
     
     
-    const unitBody = new T.InstancedMesh(new T.CylinderGeometry(0.22, 0.28, 0.55, 8), M(0x2e6fe0), 260);
     
-    const unitHead = new T.InstancedMesh(new T.SphereGeometry(0.21, 10, 8), M(0x9cc9ff), 260);
+    const unitBody = new T.InstancedMesh(new T.CylinderGeometry(0.22, 0.28, 0.55, 8), M(0x23408f), 260);
+    
+    const unitHead = new T.InstancedMesh(new T.SphereGeometry(0.21, 10, 8), M(0x2f8fff), 260);
+    const unitBrim = new T.InstancedMesh(new T.CylinderGeometry(0.3, 0.3, 0.05, 12), M(0x2a7ae8), 260);
+    const unitStripe = new T.InstancedMesh(new T.BoxGeometry(0.05, 0.05, 0.36), M(0xffd23f), 260);   
+    const unitTank = new T.InstancedMesh(new T.BoxGeometry(0.22, 0.34, 0.14), M(0x8fb3e0), 260);
     const enemyBody = new T.InstancedMesh(new T.ConeGeometry(0.95, 2.3, 10), B(0xffffff), 500);    
     const enemyHorn = new T.InstancedMesh(new T.ConeGeometry(0.55, 1.5, 8), B(0xffe14a), 500);     
     
@@ -1317,7 +1355,7 @@ function init3D() {
     const gc = document.createElement('canvas'); gc.width = gc.height = 64; const gx = gc.getContext('2d'), gr = gx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gr.addColorStop(0, 'rgba(255,170,60,0.9)'); gr.addColorStop(1, 'rgba(255,120,30,0)'); gx.fillStyle = gr; gx.fillRect(0, 0, 64, 64);
     const glowIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: new T.CanvasTexture(gc), transparent: true, depthWrite: false, blending: T.AdditiveBlending }), 500);
-    for (const im of [unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM]) { im.frustumCulled = false; scene3.add(im); }
+    for (const im of [unitBody, unitHead, unitBrim, unitStripe, unitTank, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM]) { im.frustumCulled = false; scene3.add(im); }
     enemyBody.setColorAt(0, new T.Color(0xff7a1a));   
     
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
@@ -1337,7 +1375,7 @@ function init3D() {
     }
     for (const ex of [-0.35, 0.35]) { const e = new T.Mesh(new T.BoxGeometry(0.28, 0.2, 0.1), B(0x2a0e05)); e.position.set(ex, 0.25, 0.95); boss.add(e); }
     boss.visible = false; scene3.add(boss);
-    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, boss, bossBody,
+    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, boss, bossBody,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
   } catch (e) { R3.on = false; R3.err = String(e); }
@@ -1401,6 +1439,20 @@ function render3D(g, sx, sy) {
   }
   R.postIM.instanceMatrix.needsUpdate = true;
   
+  const onBridge = stageOf(g.level).scene === 'bridge';
+  R.bridgeSet.visible = onBridge; R.citySet.visible = !onBridge;
+  if (onBridge) {
+    for (let i = 0; i < 110; i++) {   
+      const z = -118 + ((i >> 1) * 2.4 + (bgY / U3) % 2.4);
+      d.position.set((i & 1 ? 1 : -1) * ((C.ROAD_R - C.ROAD_L) / U3 / 2 + 0.15), 0.45, z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix();
+      R.railPostIM.setMatrixAt(i, d.matrix);
+    }
+    R.railPostIM.instanceMatrix.needsUpdate = true;
+    const run2 = bgY / U3;
+    R.towers.forEach((t, i) => { t.position.z = -150 + ((i * 36 + run2) % 180); });
+    R.islands.forEach(o => { o.position.set(o.userData.x, 0, -150 + ((o.userData.z0 + 150 + run2 * 0.6) % 170 + 170) % 170); });
+  }
+  
   const run = bgY / U3;
   R.lots.forEach(o => { o.position.set(o.userData.x, 0, -164 + ((o.userData.z0 + run) % 176)); });
   for (const fl of R.flames) { const k = 1 + 0.15 * Math.sin(g.t * 11 + fl.ph) + 0.08 * Math.sin(g.t * 23 + fl.ph); fl.f.scale.set(1, k, 1); fl.c.scale.set(1, 2 - k, 1); }
@@ -1446,10 +1498,13 @@ function render3D(g, sx, sy) {
     d.rotation.set(0, 0, 0);
     d.position.set(wx(u.x), 0.3 * k, wz(u.y)); d.scale.set(k, k, k); d.updateMatrix(); R.unitBody.setMatrixAt(n, d.matrix);
     d.position.y = 0.72 * k; d.updateMatrix(); R.unitHead.setMatrixAt(n, d.matrix);
+    d.position.y = 0.66 * k; d.updateMatrix(); R.unitBrim.setMatrixAt(n, d.matrix);
+    d.position.y = 0.925 * k; d.updateMatrix(); R.unitStripe.setMatrixAt(n, d.matrix);
+    d.position.set(wx(u.x), 0.38 * k, wz(u.y) + 0.24 * k); d.updateMatrix(); R.unitTank.setMatrixAt(n, d.matrix);
     n++;
   }
-  R.unitBody.count = R.unitHead.count = n;
-  R.unitBody.instanceMatrix.needsUpdate = R.unitHead.instanceMatrix.needsUpdate = true;
+  R.unitBody.count = R.unitHead.count = R.unitBrim.count = R.unitStripe.count = R.unitTank.count = n;
+  for (const im of [R.unitBody, R.unitHead, R.unitBrim, R.unitStripe, R.unitTank]) im.instanceMatrix.needsUpdate = true;
   
   n = 0; let h = 0;
   const flame = (x, y, r, col, ph) => {

@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v16';
+const VERSION = 'v17';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -166,6 +166,13 @@ function loadMeta() {
     localStorage.setItem(SAVE_KEY + '_t', '1');
     saveOK = localStorage.getItem(SAVE_KEY + '_t') === '1';   
   } catch (e) { saveOK = false; }
+}
+const RESET_BTN = { x: 250, y: 596, w: 102, h: 22 };
+let resetArm = 0;
+function resetMeta() {
+  meta = defaultMeta();
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_KEY + '_t'); } catch (e) { saveOK = false; }
+  saveMeta();
 }
 function saveMeta() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(meta)); } catch (e) { saveOK = false; }
@@ -1199,7 +1206,15 @@ canvas.addEventListener('pointerdown', e => {
   initAudio(); if (audio && audio.state === 'suspended') audio.resume();
   const [x, y] = toLogical(e);
   if (btnHit(MUTE_BTN, x, y)) { muted = !muted; return; }
-  if (scene === 'title') { startRun(); return; }
+  if (scene === 'title') {
+    
+    if (btnHit(RESET_BTN, x, y)) {
+      if (resetArm > performance.now()) { resetMeta(); resetArm = 0; sfx('bad'); }
+      else { resetArm = performance.now() + 3000; sfx('warn'); }
+      return;
+    }
+    startRun(); return;
+  }
   if (scene === 'result') {
     for (const b of buttons) if (btnHit(b, x, y)) { b.fn(); return; }
     return;
@@ -1532,6 +1547,10 @@ function drawTitle() {
   if (blink) txt('TAP TO START', 180, 570, 20, '#fff');
   txt(VERSION, 8, 630, 10, '#667', 'left', 'normal');
   txt(saveOK ? 'SAVE ○' : 'SAVE ✕ (progress will not be kept)', 352, 630, 10, saveOK ? '#667' : '#ff8a8a', 'right', 'normal');
+  { const b = RESET_BTN, armed = resetArm > performance.now();   
+    ctx.fillStyle = armed ? '#7a2230' : 'rgba(255,255,255,0.08)'; ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = armed ? '#ff5a6a' : '#3a4260'; ctx.lineWidth = 1; ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+    txt(armed ? 'TAP AGAIN TO ERASE' : 'RESET SAVE', b.x + b.w / 2, b.y + b.h / 2 + 1, 9, armed ? '#fff' : '#8890a8', 'center', '600'); }
 }
 function drawResult() {
   const r = resultInfo;

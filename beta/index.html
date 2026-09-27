@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v62';
+const VERSION = 'v63';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -74,7 +74,7 @@ const CONFIG = {
 
   
   TIRE_POW: 0.25,                    
-  TIRE_SHOW: 10, TIRE_BRITTLE: 1.0,   
+  TIRE_SHOW: 16, TIRE_BRITTLE: 1.0,      
         
   TIRE_BASE: 120, TIRE_HP: 40,    
   WEAPON_POW: 1,                  
@@ -123,8 +123,8 @@ const CONFIG = {
   MON_BLUE: 1.0, MON_ROWS: 2,     
 
   
-  UP_RATE: 0.10, UP_DMG: 0.12, UP_INCOME: 0.15,
-  UP_ARMY: 5,                     
+  UP_RATE: 0.10, UP_DMG: 0.30, UP_INCOME: 0.15,   
+  UP_ARMY: 3,                     
   COST_BASE: 12, COST_GROW: 1.25,    
 
   VOLUME: 0.35,
@@ -175,7 +175,7 @@ function resetMeta() {
 const mulText = v => '×' + (Math.round(v * 100) / 100).toString();
 const SHOP_V24 = [   
   { key: 'lvRate',   icon: 'rate',   col: '#6fc3ff', eff: lv => mulText(1 + CONFIG.UP_RATE * lv) },
-  { key: 'lvDmg',    icon: 'dmg',    col: '#ff8a5a', eff: lv => mulText(1 + CONFIG.UP_DMG * lv) },
+  { key: 'lvDmg',    icon: 'dmg',    col: '#ff8a5a', eff: lv => String(Math.round(CONFIG.TIRE_SHOW * (1 + CONFIG.UP_DMG * lv) / CONFIG.SHOT_RATE)) },   
   { key: 'lvIncome', icon: 'income', col: '#ffd84a', eff: lv => mulText(1 + CONFIG.UP_INCOME * lv) },
   { key: 'lvArmy',   icon: 'army',   col: '#7dff9b', eff: lv => String(CONFIG.START_UNITS + CONFIG.UP_ARMY * lv) },
 ];
@@ -748,6 +748,7 @@ function update(g, dt) {
         if (sl.t0 == null) sl.t0 = g.t;   
         if (!SIM && Math.random() < 0.3) fxSplash(b.x, row.y, 2);
         sl.hp -= tireDmg(b.dmg); sl.hitT = 0.06; sl.coinAcc += tireDmg(b.dmg);
+        if (!SIM && Math.random() < 0.15) popText(b.x + rr2(-10, 10), row.y - 26, Math.round(tireDmg(b.dmg)), '#ffd84a', 11);   
         while (sl.coinAcc >= sl.max / 8) { sl.coinAcc -= sl.max / 8; addCoins(g, 1 + Math.floor(g.level / 2), b.x, row.y - 10); }
         if (sl.hp <= 0) {
           (g.brk = g.brk || []).push(g.t - sl.t0);
@@ -846,7 +847,8 @@ function hurt(g, e, d) {
   if (e === g.boss) {
     if (e.y < 0) return;   
     e.hp -= d; e.flash = 0.06;
-    if (!SIM && rng() < 0.2) popText(e.x + rr(-20, 20), e.y + rr(-10, 10), Math.round(d), '#ffd84a', 10);
+    
+    if (!SIM && Math.random() < 0.3) popText(e.x + rr2(-30, 30), e.y + rr2(-14, 10), Math.round(d * CONFIG.TIRE_SHOW), '#ffd84a', 13 + Math.min(8, Math.log10(Math.max(1, d * CONFIG.TIRE_SHOW)) * 3));
     return;
   }
   e.hp -= d; e.flash = 0.06;

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v43';
+const VERSION = 'v44';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -134,11 +134,13 @@ function resetMeta() {
   saveMeta();
 }
 
+
+const mulText = v => '×' + (Math.round(v * 100) / 100).toString();
 const SHOP_V24 = [   
-  { key: 'lvRate',   label: ['FIRE', 'RATE'],  col: '#6fc3ff', eff: lv => '+' + Math.round(CONFIG.UP_RATE * 100 * lv) + '%' },
-  { key: 'lvDmg',    label: ['DAMAGE', ''],    col: '#ff8a5a', eff: lv => '+' + Math.round(CONFIG.UP_DMG * 100 * lv) + '%' },
-  { key: 'lvIncome', label: ['INCOME', ''],    col: '#ffd84a', eff: lv => '+' + Math.round(CONFIG.UP_INCOME * 100 * lv) + '%' },
-  { key: 'lvArmy',   label: ['+1', 'SOLDIER'], col: '#7dff9b', eff: lv => (CONFIG.START_UNITS + lv) + ' start' },
+  { key: 'lvRate',   icon: 'rate',   col: '#6fc3ff', eff: lv => mulText(1 + CONFIG.UP_RATE * lv) },
+  { key: 'lvDmg',    icon: 'dmg',    col: '#ff8a5a', eff: lv => mulText(1 + CONFIG.UP_DMG * lv) },
+  { key: 'lvIncome', icon: 'income', col: '#ffd84a', eff: lv => mulText(1 + CONFIG.UP_INCOME * lv) },
+  { key: 'lvArmy',   icon: 'army',   col: '#7dff9b', eff: lv => String(CONFIG.START_UNITS + lv) },
 ];
 
 const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[3], SHOP_V24[2]];
@@ -288,10 +290,10 @@ function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, 
 
 
 const STAGES = [
-  { name: 'FIRST STEPS',  lane: 0.20, wall: 0.10, wide: 0.15, tire: 0.20, move: 0.3, scene: 'bridge' },   
+  { name: 'FIRST STEPS',  lane: 0.25, wall: 0.00, wide: 0.10, tire: 0.05, move: 0.3, scene: 'bridge' },      
   { name: 'MOVING GATES', lane: 0.10, wall: 0.05, wide: 0.10, tire: 0.10, move: 1.0, scene: 'city' },
-  { name: 'POWER LANE',   lane: 0.75, wall: 0.00, wide: 0.10, tire: 0.20, move: 0.5, scene: 'bridge' },
-  { name: 'BLACK WALLS',  lane: 0.10, wall: 0.60, wide: 0.10, tire: 0.20, move: 0.5, scene: 'city' },
+  { name: 'POWER LANE',   lane: 0.75, wall: 0.00, wide: 0.10, tire: 0.10, move: 0.5, scene: 'bridge' },
+  { name: 'BLACK WALLS',  lane: 0.10, wall: 0.60, wide: 0.10, tire: 0.10, move: 0.5, scene: 'city' },
   { name: 'THE HORDE',    lane: 0.15, wall: 0.10, wide: 0.45, tire: 0.10, move: 0.5, scene: 'city' },
   { name: 'TIRE FIELD',   lane: 0.10, wall: 0.10, wide: 0.10, tire: 0.45, move: 0.5, scene: 'bridge' },
 ];
@@ -398,7 +400,8 @@ function buildTrack(g) {
   }
   g.ramp = 1; g.chunk = chunks;
   
-  for (let r = 0; r < 3; r++) T.push({ dist: d += G * 0.7, kind: 'row', lanes: [0, 1, 2].map(() => slotTire(g, 0.25 + 0.1 * r)) });
+  
+  if (g.level > 1) for (let r = 0; r < 3; r++) { const open = ri(0, 2); T.push({ dist: d += G * 0.7, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : slotTire(g, 0.25 + 0.1 * r)) }); }
   T.push({ dist: d += G, kind: 'boss' });
   return T;
 }
@@ -424,7 +427,9 @@ function trackFlow(g, dt, scroll) {
   }
 }
 function spawnBoss(g) {
-  g.boss = { x: 180, y: -60, r: 46, hp: CONFIG.BOSS_HP * g.mul, max: CONFIG.BOSS_HP * g.mul, t: 0, flash: 0 };
+  
+  const hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? 0.6 : 1);
+  g.boss = { x: 180, y: -60, r: 46, hp, max: hp, t: 0, flash: 0 };
   if (!SIM) { sfx('boss'); shake(6); }
 }
 
@@ -604,7 +609,7 @@ function update(g, dt) {
     B.t += dt; B.flash = Math.max(0, B.flash - dt);
     const front = C.LEADER_Y - 14 - B.r;
     if (B.y < front) B.y = Math.min(front, B.y + scroll * dt);
-    B.x += clamp(g.lx - B.x, -35 * dt, 35 * dt);
+    
     B.x = clamp(B.x, C.ROAD_L + B.r, C.ROAD_R - B.r);
     if (B.y >= front && Math.abs(B.x - g.lx) < B.r + formW(g) / 2) {
       if (!B.melee) { B.melee = { tick: 0, chunk: Math.max(1, Math.ceil(B.hp / C.CLASH / 24)) }; if (!SIM) { shake(10); sfx('boss'); } }
@@ -1073,7 +1078,7 @@ function drawProgress(level, p) {
 function drawHud(g) {
   const B = g.boss;
   if (B) {
-    txt('BOSS', 180, 16, 12, '#fff');
+    txt('🔥', 36, 30, 16, '#fff');   
     ctx.fillStyle = '#000a'; ctx.fillRect(50, 26, 260, 10);
     ctx.fillStyle = '#ff4d5e'; ctx.fillRect(50, 26, 260 * Math.max(0, B.hp / B.max), 10);
   } else drawProgress(g.level, Math.min(1, g.dist / g.trackEnd));
@@ -1117,93 +1122,75 @@ function drawMute() {
   txt(muted ? '🔇' : '🔊', b.x + b.w / 2, b.y + b.h / 2 + 1, 14, '#fff');
 }
 
+
+function drawIcon(kind, cx, cy, sz) {
+  const drop = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y - r * 1.5); ctx.bezierCurveTo(x + r * 1.1, y - r * 0.3, x + r, y + r, x, y + r); ctx.bezierCurveTo(x - r, y + r, x - r * 1.1, y - r * 0.3, x, y - r * 1.5); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(x - r * 0.35, y, r * 0.22, 0, 6.28); ctx.fill(); };
+  if (kind === 'dmg') drop(cx, cy + sz * 0.1, sz * 0.5, '#3fa9ff');                       
+  else if (kind === 'rate') { for (let k = 0; k < 3; k++) drop(cx - sz * 0.45 + k * sz * 0.45, cy + sz * 0.15 - k * sz * 0.12, sz * 0.22, '#7fd0ff');   
+    ctx.strokeStyle = '#cfefff'; ctx.lineWidth = 2; for (let k = 0; k < 2; k++) { ctx.beginPath(); ctx.moveTo(cx - sz * 0.7, cy + sz * 0.45 + k * 5); ctx.lineTo(cx - sz * 0.3, cy + sz * 0.45 + k * 5); ctx.stroke(); } }
+  else if (kind === 'army') { for (const [dx, k] of [[-sz * 0.35, 0.8], [sz * 0.35, 0.8], [0, 1]]) {   
+      ctx.fillStyle = '#23408f'; rrect(cx + dx - sz * 0.2 * k, cy + sz * 0.05, sz * 0.4 * k, sz * 0.5 * k, 4); ctx.fill();
+      ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(cx + dx, cy - sz * 0.05, sz * 0.2 * k, Math.PI, 0); ctx.fill(); ctx.fillRect(cx + dx - sz * 0.27 * k, cy - sz * 0.07, sz * 0.54 * k, 3); } }
+  else if (kind === 'income') { for (let k = 2; k >= 0; k--) { ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.ellipse(cx, cy + sz * 0.3 - k * sz * 0.22, sz * 0.42, sz * 0.14, 0, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.ellipse(cx, cy + sz * 0.27 - k * sz * 0.22, sz * 0.4, sz * 0.12, 0, 0, 6.28); ctx.fill(); } }
+}
+
 function drawMenu() {
   if (!R3.on) { bgY += 20 / 60; drawRoad(); }
-  else { ctx.fillStyle = 'rgba(10,14,30,0.35)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t); }   
+  else { ctx.fillStyle = 'rgba(10,14,30,0.3)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t); }
   coinPill(VB.l + 10, 24, meta.coins);
-  
-  
-  txt('FIREFIGHTER', 180, 84, 34, '#fff36b');
-  txt('SQUAD RUNNER', 180, 114, 15, '#ffffff');
-  txt('LEVEL ' + meta.level, 180, 156, 28, '#fff');
-  txt(stageOf(meta.level).name, 180, 188, 16, '#ffd84a');   
-  { const pw = powerOf(meta), rec = recPower(meta.level), ok = pw >= rec;   
-    txt('POWER ' + pw.toLocaleString('en-US'), 180, 222, 22, ok ? '#7dff9b' : '#ffb35a');
-    txt('recommended ' + rec.toLocaleString('en-US'), 180, 246, 12, '#c9d2e3', 'center', '600'); }
-  
+  txt('STAGE ' + meta.level, 180, 140, 40, '#fff');
   const n = CONFIG.START_UNITS + meta.lvArmy, t = performance.now() / 1000;
-  for (let k = 0; k < Math.min(n, 30); k++) {
-    const x = 180 + ((k % 6) - (Math.min(n, 6) - 1) / 2) * 10, y = 300 + Math.floor(k / 6) * 10;
-    ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.28); ctx.fill();
-    ctx.fillStyle = '#6fc3ff'; ctx.beginPath(); ctx.arc(x, y - 0.5, 3, 0, 6.28); ctx.fill();
-  }
-  txt(String(n), 180, 276, 16, '#fff');
   const pulse = 1 + 0.04 * Math.sin(t * 5), b = PLAY_BTN;
   ctx.save(); ctx.translate(180, b.y + b.h / 2); ctx.scale(pulse, pulse);
   ctx.fillStyle = '#ffd84a'; rrect(-b.w / 2, -b.h / 2, b.w, b.h, 14); ctx.fill();
-  txt('TAP TO PLAY', 0, 1, 24, '#1a1f33');
+  txt('PLAY', 0, 1, 28, '#1a1f33');
   ctx.restore();
-  txt('◀  drag to move  ▶', 180, 348, 12, '#c9d2e3', 'center', '600');
+  txt('◀  drag  ▶', 180, 348, 13, '#e6ecff', 'center', '700');
   SHOP.forEach((s, i) => {
     const r = shopBtn(i), lv = meta[s.key], cost = shopCost(s, meta), can = meta.coins >= cost;
-    ctx.fillStyle = '#1b2138'; rrect(r.x, r.y, r.w, r.h, 10); ctx.fill();
-    ctx.strokeStyle = can ? s.col : '#3a4260'; ctx.lineWidth = 2; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 10); ctx.stroke();
+    ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
+    ctx.strokeStyle = can ? s.col : '#3a4260'; ctx.lineWidth = 2.5; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
     const cx = r.x + r.w / 2;
-    txt(s.label[0], cx, r.y + (s.label[1] ? 16 : 24), 12, s.col);
-    if (s.label[1]) txt(s.label[1], cx, r.y + 31, 12, s.col);
-    txt('Lv ' + lv, cx, r.y + 50, 11, '#fff', 'center', '700');
-    txt(s.eff(lv), cx, r.y + 65, 10, '#c9d2e3', 'center', '600');
-    ctx.fillStyle = can ? '#ffd84a' : '#3a4260'; rrect(r.x + 8, r.y + 78, r.w - 16, 22, 11); ctx.fill();
-    txt('● ' + cost, cx, r.y + 89, 12, can ? '#1a1f33' : '#8890a8', 'center');
+    drawIcon(s.icon, cx, r.y + 30, 34);
+    txt(s.eff(lv), cx, r.y + 62, 15, '#fff');
+    for (let k = 0; k < 5; k++) { ctx.fillStyle = k < lv % 5 || (lv > 0 && lv % 5 === 0) ? s.col : '#3a4260'; ctx.beginPath(); ctx.arc(cx - 20 + k * 10, r.y + 78, 3.2, 0, 6.28); ctx.fill(); }   
+    if (lv > 0) { ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(r.x + r.w - 6, r.y + 6, 10, 0, 6.28); ctx.fill(); txt(String(lv), r.x + r.w - 6, r.y + 7, 11, '#fff'); }
+    ctx.fillStyle = can ? '#ffd84a' : '#3a4260'; rrect(r.x + 8, r.y + 86, r.w - 16, 20, 10); ctx.fill();
+    txt('● ' + cost, cx, r.y + 96, 12, can ? '#1a1f33' : '#8890a8', 'center');
   });
-  txt(VERSION + '   ' + (saveOK ? 'SAVE ○' : 'SAVE ✕ (progress will not be kept)'), 10, 618, 10, saveOK ? '#667' : '#ff8a8a', 'left', 'normal');
+  txt(VERSION + '   ' + (saveOK ? 'SAVE ○' : 'SAVE ✕'), 10, 618, 10, saveOK ? '#99a' : '#ff8a8a', 'left', 'normal');
   const rb = RESET_BTN, armed = resetArm > performance.now();
   ctx.fillStyle = armed ? '#7a2230' : 'rgba(255,255,255,0.08)'; ctx.fillRect(rb.x, rb.y, rb.w, rb.h);
   ctx.strokeStyle = armed ? '#ff5a6a' : '#3a4260'; ctx.lineWidth = 1; ctx.strokeRect(rb.x + 0.5, rb.y + 0.5, rb.w - 1, rb.h - 1);
   txt(armed ? 'TAP AGAIN TO ERASE' : 'RESET SAVE', rb.x + rb.w / 2, rb.y + rb.h / 2 + 1, 9, armed ? '#fff' : '#8890a8', 'center', '600');
 }
 
-const LOSS_ROWS = [
-  ['gate',  'RED GATES', 'Shoot red gates until they turn blue'],
-  ['enemy', 'ENEMIES',   'Dodge into the thinner lane and shoot first'],
-  ['tire',  'OBSTACLES', 'Obstacles crush anyone who hits them. Break or dodge'],   
-  ['boss',  'BOSS',      'Grow the army bigger than the boss number'],
-];
 function drawResult() {
   const r = resultInfo, C = CONFIG;
   if (!R3.on) drawRoad();
-  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t);
-  txt(r.cleared ? 'LEVEL ' + r.level + ' CLEAR!' : 'LEVEL ' + r.level + ' FAILED', 180, 96, 30, r.cleared ? '#fff36b' : '#ff5a6a');
-  if (!r.cleared) {
-    ctx.fillStyle = '#000a'; rrect(80, 126, 200, 10, 5); ctx.fill();
-    ctx.fillStyle = '#ff8a5a'; rrect(80, 126, Math.max(10, 200 * r.prog), 10, 5); ctx.fill();
-    txt(Math.floor(r.prog * 100) + '% of the way', 180, 150, 12, '#fff', 'center', '600');
-  } else txt('army ' + r.left + ' left   (peak ' + r.peak + ')', 180, 140, 13, '#fff', 'center', '600');
-  coinPill(130, 190, '+' + r.coins);
-  txt('kills ' + r.kills + (CONFIG.WEAPON_TIRES ? '    weapon ' + r.weapon : ''), 180, 222, 12, '#c9d2e3', 'center', '600');
-  txt('SOLDIERS LOST', 180, 262, 12, '#fff');
-  const mx = Math.max(1, ...LOSS_ROWS.map(l => r.lost[l[0]]));
-  let worst = LOSS_ROWS[0];
-  LOSS_ROWS.forEach((l, i) => {
-    const y = 290 + i * 28, v = r.lost[l[0]];
-    if (v > r.lost[worst[0]]) worst = l;
-    txt(l[1], 108, y, 11, '#c9d2e3', 'right', '700');
-    ctx.fillStyle = '#000a'; ctx.fillRect(118, y - 6, 170, 12);
-    ctx.fillStyle = '#ff5a6a'; ctx.fillRect(118, y - 6, 170 * v / mx, 12);
-    txt(String(v), 296, y, 11, '#fff', 'left', '700');
-  });
-  if (!r.cleared) {
-    txt('TIP', 180, 420, 11, '#fff36b');
-    txt(worst[2], 180, 440, 12, '#fff', 'center', '600');
-    
-    const pw = powerOf(meta), rec = recPower(r.level);
-    txt('POWER ' + pw.toLocaleString('en-US') + '  /  recommended ' + rec.toLocaleString('en-US'), 180, 466, 12, pw >= rec ? '#7dff9b' : '#ffb35a', 'center', '700');
-  }
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t);
+  txt(r.cleared ? 'CLEAR!' : 'FAILED', 180, 130, 46, r.cleared ? '#fff36b' : '#ff5a6a');
+  txt('STAGE ' + r.level, 180, 176, 18, '#fff');
+  
+  ctx.fillStyle = '#000a'; rrect(60, 218, 220, 14, 7); ctx.fill();
+  ctx.fillStyle = r.cleared ? '#7dff9b' : '#ff8a5a'; rrect(60, 218, Math.max(14, 220 * r.prog), 14, 7); ctx.fill();
+  ctx.fillStyle = '#ddd'; ctx.fillRect(292, 206, 2, 26); ctx.fillStyle = '#ff4d5e'; ctx.beginPath(); ctx.moveTo(294, 206); ctx.lineTo(308, 211); ctx.lineTo(294, 216); ctx.fill();
+  txt(Math.floor(r.prog * 100) + '%', 180, 252, 16, '#fff');
+  
+  r.shown = Math.min(r.coins, (r.shown || 0) + Math.max(1, r.coins / 40));
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; rrect(110, 290, 140, 50, 25); ctx.fill();
+  ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(140, 315, 14, 0, 6.28); ctx.fill(); ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(140, 314, 11.5, 0, 6.28); ctx.fill();
+  txt('+' + Math.floor(r.shown), 200, 316, 26, '#ffd84a');
   buttons = [];
-  const go = { x: 60, y: 500, w: 240, h: 60, fn: () => { scene = 'menu'; } };
-  ctx.fillStyle = '#ffd84a'; rrect(go.x, go.y, go.w, go.h, 14); ctx.fill();
-  txt('CONTINUE', 180, go.y + 31, 24, '#1a1f33');
-  buttons.push(go);
+  const play = { x: 60, y: 420, w: 240, h: 60, fn: () => startRun() };
+  const up = { x: 60, y: 496, w: 240, h: 50, fn: () => { scene = 'menu'; } };
+  ctx.fillStyle = '#ffd84a'; rrect(play.x, play.y, play.w, play.h, 14); ctx.fill();
+  txt(r.cleared ? 'NEXT ▶' : 'RETRY', 180, play.y + 31, 26, '#1a1f33');
+  ctx.fillStyle = '#2f5d9e'; rrect(up.x, up.y, up.w, up.h, 14); ctx.fill();
+  drawIcon('dmg', 112, up.y + 25, 22); txt('UPGRADE', 196, up.y + 26, 20, '#fff');
+  buttons.push(play, up);
 }
 
 
@@ -1383,16 +1370,17 @@ function init3D() {
     for (const im of [unitBody, unitHead, enemyBody]) im.castShadow = true;
     
     const boss = new T.Group();
-    const bossBody = new T.Mesh(new T.SphereGeometry(1, 20, 16), B(0xff5a1a)); boss.add(bossBody);   
-    for (let k = 0; k < 18; k++) {
-      const sp = new T.Mesh(new T.ConeGeometry(0.3, 0.9, 6), B(k % 2 ? 0xffc21a : 0xff3b1a));
-      const a = k / 18 * Math.PI * 2, b = (k % 3 - 1) * 0.5;
-      sp.position.set(Math.cos(a) * Math.cos(b), Math.sin(b) + 0.2, Math.sin(a) * Math.cos(b)).multiplyScalar(1);
-      sp.lookAt(sp.position.clone().multiplyScalar(2)); sp.rotateX(Math.PI / 2); boss.add(sp);
+    
+    const bossBody = new T.Mesh(new T.BoxGeometry(2.4, 1.6, 1.8), M(0xe8c9a0)); bossBody.position.y = 0.8; bossBody.castShadow = true; boss.add(bossBody);
+    const hroof = new T.Mesh(new T.ConeGeometry(1.95, 1.2, 4), M(0x8a3b2a)); hroof.position.y = 2.2; hroof.rotation.y = Math.PI / 4; hroof.scale.set(1.15, 1, 0.85); boss.add(hroof);
+    for (const wx4 of [-0.65, 0.65]) { const w = new T.Mesh(new T.BoxGeometry(0.5, 0.45, 0.05), B(0xffa030)); w.position.set(wx4, 0.95, 0.92); boss.add(w); }
+    const hdoor = new T.Mesh(new T.BoxGeometry(0.45, 0.8, 0.05), M(0x5a3a22)); hdoor.position.set(0, 0.4, 0.92); boss.add(hdoor);
+    const bossFlames = [];
+    for (const [fx, fy, fz, fs, col] of [[0, 2.7, 0, 1.3, 0xff6a1a], [-0.8, 2.3, 0.2, 0.9, 0xff3b1a], [0.8, 2.3, -0.1, 1.0, 0xff7a1a], [0, 3.0, 0.1, 0.8, 0xffc21a], [-0.65, 1.4, 1.0, 0.45, 0xffc21a], [0.65, 1.4, 1.0, 0.45, 0xffc21a]]) {
+      const f = new T.Mesh(new T.ConeGeometry(0.45 * fs, 1.4 * fs, 8), B(col)); f.position.set(fx, fy, fz); boss.add(f); bossFlames.push({ f, ph: fx * 3 + fy });
     }
-    for (const ex of [-0.35, 0.35]) { const e = new T.Mesh(new T.BoxGeometry(0.28, 0.2, 0.1), B(0x2a0e05)); e.position.set(ex, 0.25, 0.95); boss.add(e); }
     boss.visible = false; scene3.add(boss);
-    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody,
+    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody, bossFlames,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
   } catch (e) { R3.on = false; R3.err = String(e); }
@@ -1586,9 +1574,9 @@ function render3D(g, sx, sy) {
   R.boss.visible = !!(Bs && Bs.hp > 0);
   if (R.boss.visible) {
     const r = Bs.r / U3;
-    R.boss.position.set(wx(Bs.x), r * 1.05, wz(Bs.y)); R.boss.scale.set(r, r, r); R.boss.rotation.y = Math.sin(g.t * 1.5) * 0.3;
-    R.bossBody.material.color.setHex(Bs.flash > 0 ? 0xffffff : 0xff5a1a);
-    const fk = 1 + 0.06 * Math.sin(g.t * 13); R.boss.scale.set(r * fk, r * (2 - fk), r * fk);   
+    R.boss.position.set(wx(Bs.x), 0, wz(Bs.y)); R.boss.scale.set(r, r, r); R.boss.rotation.y = 0;
+    R.bossBody.material.color.setHex(Bs.flash > 0 ? 0xffffff : 0xe8c9a0);   
+    for (const bf of R.bossFlames) { const k = 1 + 0.18 * Math.sin(g.t * 11 + bf.ph) + 0.08 * Math.sin(g.t * 23 + bf.ph); bf.f.scale.set(1, k, 1); }   
   }
   
   const now3 = performance.now(), fdt = clamp((now3 - (R.fxT || now3)) / 1000, 0, 0.05); R.fxT = now3;
@@ -1621,7 +1609,7 @@ function drawLabels3D(g) {
     }
   }
   const Bs = g.boss;
-  if (Bs && Bs.hp > 0) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 2.6); txt(String(Math.max(0, Math.ceil(Bs.hp / CONFIG.CLASH))), px, py, 24 * k, '#fff'); }
+  if (Bs && Bs.hp > 0) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9); txt(String(Math.max(0, Math.ceil(Bs.hp / CONFIG.CLASH))), px, py, 24 * k, '#fff'); }
   const [px, py] = P3(g.lx, CONFIG.LEADER_Y, 1.6);
   txt(String(g.N), px, py, 20, '#fff');
 }
@@ -1658,7 +1646,7 @@ function frame(now) {
     if (introT > 0) {   
       introT -= dt; ctx.globalAlpha = Math.min(1, introT / 0.4);
       ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(VB.l, 230, VB.r - VB.l, 80);
-      txt('LEVEL ' + g.level, 180, 252, 16, '#fff'); txt(stageOf(g.level).name, 180, 284, 28, '#ffd84a');
+      txt('STAGE ' + g.level, 180, 270, 30, '#fff');   
       ctx.globalAlpha = 1;
     }
     if (paused) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t); txt('PAUSED', 180, 300, 30, '#fff'); txt('tap to resume', 180, 340, 14, '#fff'); }

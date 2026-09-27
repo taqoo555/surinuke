@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v22';
+const VERSION = 'v23';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -117,7 +117,8 @@ const CONFIG = {
   
   BARR_HP: 40,                    
   BARR_PER_UNIT: 16,
-  TIRE_PER: 16,                   
+  TIRE_PER: 16,
+  WEAPON_TIRE: 2.5,               
   
   WALL_HP: 25,                    
   
@@ -599,7 +600,16 @@ function slotRed(g) {
 }
 
 
+const WEAPONS = [
+  { name: 'GUN',     rate: 1.00, dmg: 1.00, color: '#e8f4ff' },
+  { name: 'RIFLE',   rate: 1.25, dmg: 1.35, color: '#7fe0ff' },
+  { name: 'BLASTER', rate: 1.50, dmg: 1.75, color: '#c98bff' },
+  { name: 'LASER',   rate: 1.80, dmg: 2.20, color: '#ff8adf' },
+];
+function weapon(g) { return WEAPONS[Math.min(WEAPONS.length - 1, g.wlv || 0)]; }
+
 function tireCost(t) { return Math.max(0, Math.ceil(t.hp / CONFIG.TIRE_PER)); }
+function slotWeaponTire(g) { const t = slotTire(g, CONFIG.WEAPON_TIRE); t.weapon = true; return t; }
 function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * (g.chunk || 0)) * g.mul * (m || 1)); return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
 function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
@@ -623,12 +633,14 @@ function buildTrack(g) {
       T.push({ dist: d += G, kind: 'row', lanes: [w, w, w] });
     } else {
       const pat = c < 2 ? 1 : r < 0.65 ? 0 : r < 0.85 ? 1 : 2;
-      const lanes = pat === 0 ? [slotRed(g), slotRed(g), slotTire(g)] : pat === 1 ? [slotBlue(g), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), slotTire(g)];
+      const tire = () => rng() < 0.3 ? slotWeaponTire(g) : slotTire(g);   
+      const lanes = pat === 0 ? [slotRed(g), slotRed(g), tire()] : pat === 1 ? [slotBlue(g), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), tire()];
       T.push({ dist: d += G, kind: 'row', lanes: shuffle3(lanes) });
     }
     if (c % 3 === 2) {
       const open = ri(0, 2);
-      T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : slotTire(g)) });
+      const wl = (open + ri(1, 2)) % 3;   
+      T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : i === wl ? slotWeaponTire(g) : slotTire(g)) });
       T.push({ dist: d + 40, kind: 'squad', lanes: [open], rows: 1 + Math.floor(c / 3) });   
     }
   }
@@ -819,10 +831,10 @@ function update(g, dt) {
     const u = g.units[i];
     if (u.type) continue;
     if (g.shotAcc[i] == null) g.shotAcc[i] = rr(0, 1);
-    g.shotAcc[i] -= dt * C.SHOT_RATE * g.rateMul;
+    g.shotAcc[i] -= dt * C.SHOT_RATE * g.rateMul * weapon(g).rate;
     if (g.shotAcc[i] <= 0) {
       g.shotAcc[i] += 1;
-      if (g.bullets.length < 600) { g.bullets.push({ x: u.x, y: u.y - 4, vx: 0, vy: -560, dmg: u.w * P / C.SHOT_RATE, r: 1.5 }); fired++; }
+      if (g.bullets.length < 600) { g.bullets.push({ x: u.x, y: u.y - 4, vx: 0, vy: -560, dmg: u.w * P * weapon(g).dmg / C.SHOT_RATE, r: 1.5, wc: weapon(g).color }); fired++; }
     }
   }
   if (!SIM && fired && rng() < 0.3) sfx('shot');
@@ -918,6 +930,10 @@ function update(g, dt) {
       if (sl.type === 'tire') {
         sl.hp -= b.dmg; sl.hitT = 0.06; sl.coinAcc += b.dmg;
         while (sl.coinAcc >= sl.max / 8) { sl.coinAcc -= sl.max / 8; const c = 1 + Math.floor(g.stage / 2); g.coins += c; if (!SIM) popText(b.x, row.y - 14, '+' + c, '#ffd84a', 13); }
+        if (sl.hp <= 0 && sl.weapon && !sl.got) {   
+          sl.got = true; g.wlv = Math.min(WEAPONS.length - 1, (g.wlv || 0) + 1);
+          if (!SIM) { popText(laneX(laneOf(b.x)), row.y - 40, weapon(g).name + '!', weapon(g).color, 24); burst(laneX(laneOf(b.x)), row.y, weapon(g).color, 30); sfx('combo'); shake(5); }
+        }
         if (sl.hp <= 0 && !SIM) { burst(laneX(laneOf(b.x)), row.y, '#666', 26); popText(laneX(laneOf(b.x)), row.y - 20, 'BREAK!', '#fff', 18); sfx('flip'); shake(4); }
       } else shootGate(g, sl, b, b.x, row.y);
       break;
@@ -1064,7 +1080,10 @@ function kill(g, e) {
   if (e.dead) return;
   e.dead = true; e.hp = 0;
   g.kills++;
-  g.coins += e.kind === 'brute' ? 5 : e.kind === 'shooter' ? 3 : 1;
+  
+  const cv = (e.kind === 'brute' ? 5 : e.kind === 'shooter' ? 3 : 1) * (1 + Math.floor(g.stage / 2));
+  g.coins += cv;
+  if (!SIM) { coinFx(e.x, e.y, cv); }
   if (!SIM) { burst(e.x, e.y, e.kind === 'brute' ? '#ff9a3a' : '#ff5a6a', e.kind === 'brute' ? 22 : 8); sfx('kill'); if (e.kind === 'brute') shake(4); }
   
   
@@ -1169,7 +1188,11 @@ function slipFx(x) {
   burst(x, CONFIG.LEADER_Y, '#fff36b', 30);
   sfx('slip'); hitstop = 0.08; shake(4);
 }
-let pickup = null;
+let pickup = null, coinsFly = [];
+function coinFx(x, y, v) {
+  if (coinsFly.length < 60) coinsFly.push({ x, y, t: 0, vx: rr(-40, 40), vy: rr(-90, -50) });
+  if (texts.length < 50) texts.push({ x: x + 8, y: y - 6, s: '+' + v, col: '#ffd84a', life: 0.6, size: 11 });
+}
 function phaseFx(s, col) { popText(180, 250, s, col, 22); }
 function pickupFx(p, lv) { pickup = { p, lv, life: 1.8 }; }
 function banner(c) {
@@ -1249,7 +1272,7 @@ let scene = 'title', game = null, paused = false, autoPaused = false, bgY = 0, r
 
 function startRun() {
   game = newRun(meta.stage, meta, null);
-  parts = []; texts = []; rings = []; bannerFx = null; pickup = null;
+  parts = []; texts = []; rings = []; bannerFx = null; pickup = null; coinsFly = [];
   scene = 'play';
 }
 function endRun() {
@@ -1366,6 +1389,12 @@ function drawRows(g, dt) {
         }
         ctx.fillStyle = '#6b7080'; ctx.beginPath(); ctx.ellipse(cx, row.y - 6, rw * 0.45, 4, 0, 0, 6.28); ctx.fill();
         txt(String(tireCost(sl)), cx, row.y + 24, sl.hitT > 0 ? 20 : 18, '#ff9a5a');   
+        if (sl.weapon) {   
+          const nx = WEAPONS[Math.min(WEAPONS.length - 1, (g.wlv || 0) + 1)], gy = row.y - 26 + Math.sin(performance.now() / 200) * 2;
+          ctx.fillStyle = '#0b0e18'; ctx.fillRect(cx - 17, gy - 6, 34, 12);
+          ctx.fillStyle = nx.color; ctx.fillRect(cx - 15, gy - 4, 26, 6); ctx.fillRect(cx - 15, gy, 6, 8); ctx.fillRect(cx + 9, gy - 3, 7, 3);
+          txt(nx.name, cx, gy - 12, 9, nx.color, 'center', '700');
+        }
         continue;
       }
       drawGateSide(x0, x1, row.y, sl, row.done && row.picked !== i, dt);
@@ -1543,7 +1572,7 @@ function drawBullets(g) {
       continue;
     }
     if (b.pellet) { ctx.fillStyle = '#9beaff'; ctx.beginPath(); ctx.arc(b.x, b.y, 1.8, 0, 6.28); ctx.fill(); continue; }
-    ctx.fillStyle = b.split ? '#9beaff' : '#e8f4ff';
+    ctx.fillStyle = b.wc || (b.split ? '#9beaff' : '#e8f4ff');   
     ctx.fillRect(b.x - 1.5, b.y - 5, 3, 8);
   }
   for (const b of g.ebullets) {
@@ -1555,6 +1584,7 @@ function drawBullets(g) {
 function drawHud(g) {
   txt('STAGE ' + g.stage, 12, 22, 16, '#fff', 'left');
   txt('● ' + (meta.coins + g.coins), 12, 44, 14, '#ffd84a', 'left');
+  txt(weapon(g).name + ' Lv' + ((g.wlv || 0) + 1), 316, 50, 11, weapon(g).color, 'right', '700');   
   
   let x = 12;
   for (const p of Object.keys(PROPS)) {
@@ -1572,7 +1602,18 @@ function drawHud(g) {
     ctx.fillStyle = '#ffd84a'; ctx.fillRect(120, 16, 180 * p, 6);
   }
 }
+function drawCoinsFly(dt) {   
+  for (const c of coinsFly) {
+    c.t += dt;
+    if (c.t < 0.25) { c.x += c.vx * dt; c.y += c.vy * dt; c.vy += 300 * dt; }
+    else { const k = Math.min(1, dt * 9); c.x += (14 - c.x) * k; c.y += (44 - c.y) * k; }
+    ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(c.x, c.y, 4.5, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(c.x, c.y - 0.5, 3.5, 0, 6.28); ctx.fill();
+  }
+  coinsFly = coinsFly.filter(c => c.t < 0.25 || Math.hypot(c.x - 14, c.y - 44) > 6);
+}
 function drawFx(dt) {
+  drawCoinsFly(dt);
   for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92; p.life -= dt; }
   parts = parts.filter(p => p.life > 0);
   for (const p of parts) { ctx.globalAlpha = Math.min(1, p.life / 0.3); ctx.fillStyle = p.col; ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2); }

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v46';
+const VERSION = 'v47';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -881,7 +881,7 @@ canvas.addEventListener('pointerdown', e => {
     if (y < 440) startRun();
     return;
   }
-  if (scene === 'result') { for (const b of buttons) if (btnHit(b, x, y)) { b.fn(); return; } return; }
+  if (scene === 'result') { for (let i = 0; i < SHOP.length; i++) if (btnHit(shopBtn(i), x, y)) { buy(i); return; } for (const b of buttons) if (btnHit(b, x, y)) { b.fn(); return; } return; }
   if (scene === 'play') {
     if (paused) { paused = false; if (audio) audio.resume(); return; }
     drag = { id: e.pointerId, x0: x, l0: game.target };
@@ -1143,12 +1143,12 @@ function drawIcon(kind, cx, cy, sz) {
     ctx.lineCap = 'butt';
   } else if (kind === 'army') {   
     const x = cx - sz * 0.08;
-    ctx.fillStyle = '#23408f'; rrect(x - sz * 0.26, cy + sz * 0.08, sz * 0.52, sz * 0.38, 6); ctx.fill();          
-    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.26, cy + sz * 0.26, sz * 0.52, sz * 0.05);                     
-    ctx.fillStyle = '#f2c9a0'; ctx.beginPath(); ctx.arc(x, cy - sz * 0.02, sz * 0.15, 0, 6.28); ctx.fill();           
-    ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(x, cy - sz * 0.1, sz * 0.2, Math.PI, 0); ctx.fill();          
-    ctx.fillRect(x - sz * 0.28, cy - sz * 0.12, sz * 0.56, sz * 0.06);                                                  
-    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.03, cy - sz * 0.3, sz * 0.06, sz * 0.19);                        
+    ctx.fillStyle = '#23408f'; rrect(x - sz * 0.27, cy + sz * 0.02, sz * 0.54, sz * 0.44, 7); ctx.fill();          
+    ctx.fillStyle = '#8fb3e0'; rrect(x - sz * 0.13, cy + sz * 0.06, sz * 0.26, sz * 0.3, 4); ctx.fill();           
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.27, cy + sz * 0.38, sz * 0.54, sz * 0.05);                   
+    ctx.fillStyle = '#2a7ae8'; ctx.beginPath(); ctx.ellipse(x, cy - sz * 0.02, sz * 0.3, sz * 0.08, 0, 0, 6.28); ctx.fill();   
+    ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(x, cy - sz * 0.04, sz * 0.22, Math.PI, 0); ctx.fill();      
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.03, cy - sz * 0.26, sz * 0.06, sz * 0.22);                   
     plus(cx + sz * 0.33, cy - sz * 0.2, '#7dff9b');
   } else if (kind === 'income') {   
     for (let k = 0; k < 3; k++) { const y = cy + sz * 0.32 - k * sz * 0.13;
@@ -1156,6 +1156,21 @@ function drawIcon(kind, cx, cy, sz) {
       ctx.fillStyle = '#f5b800'; ctx.beginPath(); ctx.ellipse(cx, y, sz * 0.36, sz * 0.12, 0, 0, 6.28); ctx.fill(); }
     drawCoin(cx, cy - sz * 0.12, sz * 0.3);
   }
+}
+function drawShop() {   
+  SHOP.forEach((s, i) => {
+    const r = shopBtn(i), lv = meta[s.key], cost = shopCost(s, meta), can = meta.coins >= cost;
+    ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
+    ctx.strokeStyle = can ? s.col : '#3a4260'; ctx.lineWidth = 2.5; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
+    const cx = r.x + r.w / 2;
+    drawIcon(s.icon, cx, r.y + 32, 36);
+    txt(s.eff(lv), cx, r.y + 68, 16, '#fff');
+    
+    if (lv > 0) { ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(r.x + r.w - 6, r.y + 6, 10, 0, 6.28); ctx.fill(); txt(String(lv), r.x + r.w - 6, r.y + 7, 11, '#fff'); }
+    ctx.fillStyle = can ? '#10142a' : 'rgba(40,46,70,0.9)'; rrect(r.x + 8, r.y + 84, r.w - 16, 22, 11); ctx.fill();
+    if (can) { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 1.5; rrect(r.x + 8, r.y + 84, r.w - 16, 22, 11); ctx.stroke(); }
+    drawCoin(r.x + 22, r.y + 95, 7); txt(String(cost), cx + 7, r.y + 96, 13, can ? '#ffd84a' : '#8890a8', 'center');   
+  });
 }
 
 function drawMenu() {
@@ -1170,19 +1185,7 @@ function drawMenu() {
   txt('PLAY', 0, 1, 28, '#1a1f33');
   ctx.restore();
   txt('◀  drag  ▶', 180, 348, 13, '#e6ecff', 'center', '700');
-  SHOP.forEach((s, i) => {
-    const r = shopBtn(i), lv = meta[s.key], cost = shopCost(s, meta), can = meta.coins >= cost;
-    ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
-    ctx.strokeStyle = can ? s.col : '#3a4260'; ctx.lineWidth = 2.5; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
-    const cx = r.x + r.w / 2;
-    drawIcon(s.icon, cx, r.y + 32, 36);
-    txt(s.eff(lv), cx, r.y + 68, 16, '#fff');
-    
-    if (lv > 0) { ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(r.x + r.w - 6, r.y + 6, 10, 0, 6.28); ctx.fill(); txt(String(lv), r.x + r.w - 6, r.y + 7, 11, '#fff'); }
-    ctx.fillStyle = can ? '#10142a' : 'rgba(40,46,70,0.9)'; rrect(r.x + 8, r.y + 84, r.w - 16, 22, 11); ctx.fill();
-    if (can) { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 1.5; rrect(r.x + 8, r.y + 84, r.w - 16, 22, 11); ctx.stroke(); }
-    drawCoin(r.x + 22, r.y + 95, 7); txt(String(cost), cx + 7, r.y + 96, 13, can ? '#ffd84a' : '#8890a8', 'center');   
-  });
+  drawShop();
   txt(VERSION + '   ' + (saveOK ? 'SAVE ○' : 'SAVE ✕'), 10, 618, 10, saveOK ? '#99a' : '#ff8a8a', 'left', 'normal');
   const rb = RESET_BTN, armed = resetArm > performance.now();
   ctx.fillStyle = armed ? '#7a2230' : 'rgba(255,255,255,0.08)'; ctx.fillRect(rb.x, rb.y, rb.w, rb.h);
@@ -1194,8 +1197,8 @@ function drawResult() {
   const r = resultInfo, C = CONFIG;
   if (!R3.on) drawRoad();
   ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t);
-  txt(r.cleared ? 'CLEAR!' : 'FAILED', 180, 130, 46, r.cleared ? '#fff36b' : '#ff5a6a');
-  txt('STAGE ' + r.level, 180, 176, 18, '#fff');
+  txt(r.cleared ? 'CLEAR!' : 'FAILED', 180, 110, 46, r.cleared ? '#fff36b' : '#ff5a6a');
+  txt('STAGE ' + r.level, 180, 152, 18, '#fff');
   
   ctx.fillStyle = '#000a'; rrect(60, 218, 220, 14, 7); ctx.fill();
   ctx.fillStyle = r.cleared ? '#7dff9b' : '#ff8a5a'; rrect(60, 218, Math.max(14, 220 * r.prog), 14, 7); ctx.fill();
@@ -1206,14 +1209,14 @@ function drawResult() {
   ctx.fillStyle = 'rgba(0,0,0,0.45)'; rrect(110, 290, 140, 50, 25); ctx.fill();
   drawCoin(140, 315, 14);
   txt('+' + Math.floor(r.shown), 200, 316, 26, '#ffd84a');
+  
   buttons = [];
-  const play = { x: 60, y: 420, w: 240, h: 60, fn: () => startRun() };
-  const up = { x: 60, y: 496, w: 240, h: 50, fn: () => { scene = 'menu'; } };
+  const b = PLAY_BTN, play = { x: b.x, y: b.y, w: b.w, h: b.h, fn: () => startRun() };
   ctx.fillStyle = '#ffd84a'; rrect(play.x, play.y, play.w, play.h, 14); ctx.fill();
-  txt(r.cleared ? 'NEXT ▶' : 'RETRY', 180, play.y + 31, 26, '#1a1f33');
-  ctx.fillStyle = '#2f5d9e'; rrect(up.x, up.y, up.w, up.h, 14); ctx.fill();
-  drawIcon('dmg', 112, up.y + 25, 22); txt('UPGRADE', 196, up.y + 26, 20, '#fff');
-  buttons.push(play, up);
+  txt(r.cleared ? 'NEXT ▶' : 'RETRY', 180, play.y + play.h / 2 + 1, 26, '#1a1f33');
+  buttons.push(play);
+  coinPill(VB.l + 10, 24, meta.coins);
+  drawShop();
 }
 
 

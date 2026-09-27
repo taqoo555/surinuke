@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v15';
+const VERSION = 'v16';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -76,14 +76,14 @@ const CONFIG = {
   
   TIRE_SHOW: 10,                  
   
-  TIRE_HP: 50,                    
+  TIRE_HP: 130,                       
   CLASH: 25,                      
   
   SQUAD_ROWS: 2,                  
   RED_MIN: 12, RED_MAX: 26,       
-  TIRE_BASE: 60,                  
+  TIRE_BASE: 250,                   
   TRACK_GAP: 230,                 
-  CHUNKS: 7,                      
+  CHUNKS: 10,                         
   RATE_UP: 0.2,                   
   
 
@@ -111,7 +111,7 @@ const CONFIG = {
   DIV_NEED: 30,                   
   
   BARR_HP: 40,                    
-  BARR_PER_UNIT: 8,               
+  BARR_PER_UNIT: 16,                  
   
   WALL_HP: 25,                    
   
@@ -573,29 +573,33 @@ function slotRed(g) {
   const k = Math.max(3, Math.round(rr(CONFIG.RED_MIN, CONFIG.RED_MAX) * sc * (g.ramp || 1)));   
   return { type: 'add', v: -k, max: Infinity, good: false, hitT: 0 };   
 }
-function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.stage) * (m || 1) * (g.ramp || 1)); return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
+
+function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * (g.chunk || 0)) * g.mul * (m || 1)); return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
 function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 function buildTrack(g) {
+  
   const C = CONFIG, G = C.TRACK_GAP, T = [];
   let d = 0;
   const chunks = C.CHUNKS + Math.floor((g.stage - 1) / 2);
-  T.push({ dist: d += 60, kind: 'row', lanes: [slotBlue(g), slotBlue(g), slotBlue(g)] });   
   for (let c = 0; c < chunks; c++) {
     
-    g.ramp = Math.min(1, 0.4 + 0.15 * c);
+    g.ramp = Math.min(1, 0.4 + 0.15 * c); g.chunk = c;
+    const two = rng() < 0.2 + 0.04 * c;
+    const l1 = ri(0, 2), l2 = (l1 + ri(1, 2)) % 3;
+    T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: two ? [l1, l2] : [l1], rows: (c < 2 ? 1 : C.SQUAD_ROWS) + Math.floor(c / 3) + Math.floor((g.stage - 1) / 2) });
     const pat = ri(0, 2);
     const lanes = pat === 0 ? [slotRed(g), slotRed(g), slotTire(g)] : pat === 1 ? [slotBlue(g), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), slotTire(g)];
     T.push({ dist: d += G, kind: 'row', lanes: shuffle3(lanes) });
-    const two = rng() < 0.2 + 0.04 * c;   
-    const l1 = ri(0, 2), l2 = (l1 + ri(1, 2)) % 3;
-    T.push({ dist: d += G * 0.8, kind: 'squad', lanes: two ? [l1, l2] : [l1], rows: (c < 2 ? 1 : C.SQUAD_ROWS) + Math.floor(c / 3) + Math.floor((g.stage - 1) / 2) });      
-    const open = ri(0, 2);
-    T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : slotTire(g)) });
-    T.push({ dist: d + 40, kind: 'squad', lanes: [open], rows: 1 + Math.floor(c / 3) });   
+    if (c % 3 === 2) {
+      const open = ri(0, 2);
+      T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : slotTire(g)) });
+      T.push({ dist: d + 40, kind: 'squad', lanes: [open], rows: 1 + Math.floor(c / 3) });   
+    }
   }
-  g.ramp = 1;
-  for (let r = 0; r < 3; r++) T.push({ dist: d += G * 0.7, kind: 'row', lanes: [0, 1, 2].map(() => slotTire(g, 1.4 + 0.5 * r)) });
+  g.ramp = 1; g.chunk = chunks;
+  
+  for (let r = 0; r < 3; r++) T.push({ dist: d += G * 0.7, kind: 'row', lanes: [0, 1, 2].map(() => slotTire(g, 0.4 + 0.15 * r)) });
   T.push({ dist: d += G, kind: 'boss' });
   return T;
 }

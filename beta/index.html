@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v44';
+const VERSION = 'v45';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -265,6 +265,8 @@ function slotWeaponTire(g) {
   return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0, weapon: true };
 }
 
+
+function bossText(B) { const v = B.hp * CONFIG.TIRE_SHOW; B.disp = B.disp == null ? v : B.disp + (v - B.disp) * 0.35; return Math.max(0, Math.ceil(B.disp)).toLocaleString('en-US'); }
 function hpText(sl) {
   sl.disp = sl.disp == null ? sl.hp : sl.disp + (sl.hp - sl.disp) * 0.35;
   return Math.max(0, Math.ceil(sl.disp)).toLocaleString('en-US');
@@ -1031,7 +1033,7 @@ function drawEnemies(g) {
     ctx.fillStyle = B.flash > 0 ? '#fff' : '#d8324a'; ctx.beginPath(); ctx.arc(B.x, B.y, B.r - 4, 0, 6.28); ctx.fill();
     ctx.fillStyle = '#ffd84a'; ctx.fillRect(B.x - 20, B.y - 12, 12, 9); ctx.fillRect(B.x + 8, B.y - 12, 12, 9);
     ctx.fillStyle = '#1a1f33'; ctx.fillRect(B.x - 16, B.y + 6, 32, 6);
-    txt(String(Math.max(0, Math.ceil(B.hp / CONFIG.CLASH))), B.x, B.y + 24, 20, '#fff');   
+    txt(bossText(B), B.x, B.y + 24, 20, '#fff');
   }
 }
 function drawCrowd(g) {
@@ -1123,17 +1125,25 @@ function drawMute() {
 }
 
 
+
 function drawIcon(kind, cx, cy, sz) {
-  const drop = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y - r * 1.5); ctx.bezierCurveTo(x + r * 1.1, y - r * 0.3, x + r, y + r, x, y + r); ctx.bezierCurveTo(x - r, y + r, x - r * 1.1, y - r * 0.3, x, y - r * 1.5); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(x - r * 0.35, y, r * 0.22, 0, 6.28); ctx.fill(); };
-  if (kind === 'dmg') drop(cx, cy + sz * 0.1, sz * 0.5, '#3fa9ff');                       
-  else if (kind === 'rate') { for (let k = 0; k < 3; k++) drop(cx - sz * 0.45 + k * sz * 0.45, cy + sz * 0.15 - k * sz * 0.12, sz * 0.22, '#7fd0ff');   
-    ctx.strokeStyle = '#cfefff'; ctx.lineWidth = 2; for (let k = 0; k < 2; k++) { ctx.beginPath(); ctx.moveTo(cx - sz * 0.7, cy + sz * 0.45 + k * 5); ctx.lineTo(cx - sz * 0.3, cy + sz * 0.45 + k * 5); ctx.stroke(); } }
-  else if (kind === 'army') { for (const [dx, k] of [[-sz * 0.35, 0.8], [sz * 0.35, 0.8], [0, 1]]) {   
-      ctx.fillStyle = '#23408f'; rrect(cx + dx - sz * 0.2 * k, cy + sz * 0.05, sz * 0.4 * k, sz * 0.5 * k, 4); ctx.fill();
-      ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(cx + dx, cy - sz * 0.05, sz * 0.2 * k, Math.PI, 0); ctx.fill(); ctx.fillRect(cx + dx - sz * 0.27 * k, cy - sz * 0.07, sz * 0.54 * k, 3); } }
-  else if (kind === 'income') { for (let k = 2; k >= 0; k--) { ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.ellipse(cx, cy + sz * 0.3 - k * sz * 0.22, sz * 0.42, sz * 0.14, 0, 0, 6.28); ctx.fill();
-      ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.ellipse(cx, cy + sz * 0.27 - k * sz * 0.22, sz * 0.4, sz * 0.12, 0, 0, 6.28); ctx.fill(); } }
+  const plus = (x, y, col) => { ctx.fillStyle = col; ctx.fillRect(x - sz * 0.13, y - 2.5, sz * 0.26, 5); ctx.fillRect(x - 2.5, y - sz * 0.13, 5, sz * 0.26); };
+  if (kind === 'dmg') {
+    const r = sz * 0.42, x = cx, y = cy + sz * 0.1;
+    ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.moveTo(x, y - r * 1.5); ctx.bezierCurveTo(x + r * 1.1, y - r * 0.3, x + r, y + r, x, y + r); ctx.bezierCurveTo(x - r, y + r, x - r * 1.1, y - r * 0.3, x, y - r * 1.5); ctx.fill();
+  } else if (kind === 'rate') {
+    ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = sz * 0.14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const dx of [-sz * 0.2, sz * 0.12]) { ctx.beginPath(); ctx.moveTo(cx + dx - sz * 0.14, cy - sz * 0.3); ctx.lineTo(cx + dx + sz * 0.14, cy); ctx.lineTo(cx + dx - sz * 0.14, cy + sz * 0.3); ctx.stroke(); }
+    ctx.lineCap = 'butt';
+  } else if (kind === 'army') {
+    ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy - sz * 0.2, sz * 0.17, 0, 6.28); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy + sz * 0.32, sz * 0.3, Math.PI, 0); ctx.fill();
+    plus(cx + sz * 0.33, cy - sz * 0.12, '#7dff9b');
+  } else if (kind === 'income') {
+    ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy + sz * 0.02, sz * 0.32, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy, sz * 0.27, 0, 6.28); ctx.fill();
+    plus(cx + sz * 0.33, cy - sz * 0.22, '#7dff9b');
+  }
 }
 
 function drawMenu() {
@@ -1609,7 +1619,7 @@ function drawLabels3D(g) {
     }
   }
   const Bs = g.boss;
-  if (Bs && Bs.hp > 0) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9); txt(String(Math.max(0, Math.ceil(Bs.hp / CONFIG.CLASH))), px, py, 24 * k, '#fff'); }
+  if (Bs && Bs.hp > 0) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9); txt(bossText(Bs), px, py, 24 * k, '#ffd0a0'); }
   const [px, py] = P3(g.lx, CONFIG.LEADER_Y, 1.6);
   txt(String(g.N), px, py, 20, '#fff');
 }

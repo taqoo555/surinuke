@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v39';
+const VERSION = 'v40';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1225,34 +1225,53 @@ function init3D() {
     const roadW = (CONFIG.ROAD_R - CONFIG.ROAD_L) / U3, roadL = 140;
     const road = new T.Mesh(new T.PlaneGeometry(roadW, roadL), M(0xffffff, { map: tex }));
     road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -roadL / 2 + 12); scene3.add(road);
-    const water = new T.Mesh(new T.PlaneGeometry(600, roadL + 200), M(0x3a8fd8));    water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
-    for (const sx of [-1, 1]) {   
-      const rail = new T.Mesh(new T.BoxGeometry(0.25, 0.25, roadL), M(0x6f7ba8)); rail.position.set(sx * (roadW / 2 + 0.15), 0.9, -roadL / 2 + 12); scene3.add(rail);
-      const side = new T.Mesh(new T.BoxGeometry(0.4, 1.2, roadL), M(0x39436a)); side.position.set(sx * (roadW / 2 + 0.2), -0.6, -roadL / 2 + 12); scene3.add(side);
-    }
-    const postIM = new T.InstancedMesh(new T.BoxGeometry(0.22, 0.9, 0.22), M(0x8a96c8), 110); scene3.add(postIM);
     
-    const towers = [];
-    const cable = (a, b, mat) => { const d = b.clone().sub(a), m = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, d.length(), 5), mat);
-      m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), d.normalize()); return m; };
-    const towerMat = M(0xd8dde8), cableMat = M(0x9aa3b8);
-    for (let i = 0; i < 5; i++) {
-      const tg = new T.Group(), hx = roadW / 2 + 0.9;
-      for (const sx2 of [-1, 1]) {
-        const col = new T.Mesh(new T.BoxGeometry(0.9, 28, 0.9), towerMat); col.position.set(sx2 * hx, 13, 0); tg.add(col);
-        for (const dz of [-14, -7, 7, 14]) tg.add(cable(new T.Vector3(sx2 * hx, 24, 0), new T.Vector3(sx2 * (roadW / 2 + 0.15), 1, dz), cableMat));
-      }
-      const beam = new T.Mesh(new T.BoxGeometry(roadW + 2.7, 0.9, 0.9), towerMat); beam.position.set(0, 26.5, 0); tg.add(beam);   
-      tg.traverse(o => { if (o.isMesh) o.castShadow = false; });
-      scene3.add(tg); towers.push(tg);
+    const ground = new T.Mesh(new T.PlaneGeometry(600, roadL + 200), M(0x8cc86e)); ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.03, -roadL / 2 + 12); ground.receiveShadow = true; scene3.add(ground);
+    for (const sx of [-1, 1]) {   
+      const walk = new T.Mesh(new T.BoxGeometry(3, 0.12, roadL), M(0xd4d2c8)); walk.position.set(sx * (roadW / 2 + 1.5), 0.06, -roadL / 2 + 12); walk.receiveShadow = true; scene3.add(walk);
+      const curb = new T.Mesh(new T.BoxGeometry(0.25, 0.22, roadL), M(0xf2f0e8)); curb.position.set(sx * (roadW / 2 + 0.12), 0.11, -roadL / 2 + 12); scene3.add(curb);
     }
-    const islands = [];
-    for (let i = 0; i < 10; i++) {
-      const ig = new T.Group(), rr2 = 5 + (i * 37 % 7), hh = 3 + (i * 53 % 5);
-      const sand = new T.Mesh(new T.CylinderGeometry(rr2 * 1.15, rr2 * 1.25, 0.6, 9), M(0xe8d28a)); sand.position.y = -1.1; ig.add(sand);
-      const hill = new T.Mesh(new T.ConeGeometry(rr2, hh, 8), M(i % 3 ? 0x5aa34a : 0x4b8f3f)); hill.position.y = -1 + hh / 2; ig.add(hill);
-      ig.userData = { x: (i % 2 ? 1 : -1) * (26 + (i * 29 % 45)), z0: -20 - (i * 61 % 150) };
-      scene3.add(ig); islands.push(ig);
+    const postIM = new T.InstancedMesh(new T.BoxGeometry(0.16, 3.4, 0.16), M(0x5d6474), 40); scene3.add(postIM);   
+    
+    const wc = document.createElement('canvas'); wc.width = 64; wc.height = 128; const wx2 = wc.getContext('2d');
+    wx2.fillStyle = '#ffffff'; wx2.fillRect(0, 0, 64, 128);
+    for (let yy = 8; yy < 128; yy += 16) for (let xx = 6; xx < 64; xx += 16) { wx2.fillStyle = '#7fa7c9'; wx2.fillRect(xx, yy, 10, 9); }
+    const winTex = new T.CanvasTexture(wc); winTex.wrapS = winTex.wrapT = T.RepeatWrapping; winTex.repeat.set(2, 3);
+    const fireMat = B(0xff7a1a), fireCore = B(0xffd23f);
+    const lots = [], flames = [];
+    const pick = (i, k, arr) => arr[(i * 7919 + k * 104729) % arr.length];
+    for (let i = 0; i < 32; i++) {
+      const side = i % 2 ? 1 : -1, gr = new T.Group(), kind = pick(i, 1, ['office', 'office', 'house', 'house', 'park', 'office', 'house']);
+      let top = 0, dep = 7;
+      if (kind === 'office') {
+        const h = 8 + (i * 13 % 9), w = 7 + (i % 3);
+        const bld = new T.Mesh(new T.BoxGeometry(dep, h, w), M(pick(i, 2, [0xdfe6ee, 0xc9d7e8, 0xe8e1d4, 0xb8c7d9]), { map: winTex }));
+        bld.position.y = h / 2; bld.castShadow = true; gr.add(bld); top = h;
+        const roof = new T.Mesh(new T.BoxGeometry(dep + 0.3, 0.4, w + 0.3), M(0x8c95a8)); roof.position.y = h + 0.2; gr.add(roof);
+      } else if (kind === 'house') {
+        dep = 5;
+        const body = new T.Mesh(new T.BoxGeometry(5, 3, 5), M(pick(i, 3, [0xf4e4c1, 0xe8c9a0, 0xdfe8d8, 0xf0d6d0]))); body.position.y = 1.5; body.castShadow = true; gr.add(body);
+        const roof = new T.Mesh(new T.ConeGeometry(4.3, 2.4, 4), M(pick(i, 4, [0xc0503a, 0x7b4b3a, 0x3f5f8a]))); roof.position.y = 4.2; roof.rotation.y = Math.PI / 4; roof.castShadow = true; gr.add(roof);
+        const door = new T.Mesh(new T.BoxGeometry(0.1, 1.4, 1), M(0x6b4a2e)); door.position.set(-side * 2.55, 0.7, 0); gr.add(door);
+        top = 4.5;
+      } else {
+        dep = 9;
+        const lawn = new T.Mesh(new T.BoxGeometry(9, 0.12, 9), M(0x6fbf5a)); lawn.position.y = 0.06; lawn.receiveShadow = true; gr.add(lawn);
+        for (const [tx, tz, ts] of [[-2, -2.5, 1.3], [2, 1, 1.6], [-1, 3, 1.1]]) {
+          const trunk = new T.Mesh(new T.CylinderGeometry(0.2, 0.25, 1.6, 6), M(0x7a4a24)); trunk.position.set(tx, 0.8, tz); gr.add(trunk);
+          const can = new T.Mesh(new T.SphereGeometry(ts, 10, 8), M(0x3f9b3a)); can.position.set(tx, 1.6 + ts * 0.7, tz); can.castShadow = true; gr.add(can);
+        }
+        const bench = new T.Mesh(new T.BoxGeometry(0.6, 0.5, 2), M(0x9a6b3e)); bench.position.set(side * -3, 0.25, -1); gr.add(bench);
+      }
+      if (kind !== 'park' && pick(i, 5, [0, 0, 1]) === 1) {   
+        for (const [fx, fz, fs] of [[0, 0, 1.4], [-1.2, 1, 0.9], [1.1, -1.2, 1]]) {
+          const f = new T.Mesh(new T.ConeGeometry(0.7 * fs, 2.2 * fs, 8), fireMat); f.position.set(fx, top + 1.1 * fs, fz); gr.add(f);
+          const c = new T.Mesh(new T.ConeGeometry(0.4 * fs, 1.4 * fs, 8), fireCore); c.position.set(fx, top + 0.7 * fs, fz + 0.05); gr.add(c);
+          flames.push({ f, c, fs, ph: i * 1.7 + fx });
+        }
+      }
+      gr.userData = { x: side * (roadW / 2 + 3.4 + dep / 2), z0: Math.floor(i / 2) * 11 + (side > 0 ? 5 : 0) };
+      scene3.add(gr); lots.push(gr);
     }
     const clouds = [];
     for (let i = 0; i < 9; i++) {
@@ -1318,7 +1337,7 @@ function init3D() {
     }
     for (const ex of [-0.35, 0.35]) { const e = new T.Mesh(new T.BoxGeometry(0.28, 0.2, 0.1), B(0x2a0e05)); e.position.set(ex, 0.25, 0.95); boss.add(e); }
     boss.visible = false; scene3.add(boss);
-    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, towers, islands, clouds, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, boss, bossBody,
+    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, boss, bossBody,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
   } catch (e) { R3.on = false; R3.err = String(e); }
@@ -1375,16 +1394,16 @@ function render3D(g, sx, sy) {
   R.camX = (R.camX || 0) + (wx(g.lx) * 0.3 - (R.camX || 0)) * 0.08;
   R.cam.position.set(R.camX + sx * 0.05, CAM3.y + sy * 0.05, CAM3.z); R.cam.lookAt(R.camX * 0.6 + sx * 0.05, 0, CAM3.look);
   R.tex.offset.y = (bgY / U3) / 4;   
-  for (let i = 0; i < 110; i++) {   
-    const z = -118 + ((i >> 1) * 2.4 + (bgY / U3) % 2.4);
-    d.position.set((i & 1 ? 1 : -1) * ((C.ROAD_R - C.ROAD_L) / U3 / 2 + 0.15), 0.45, z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix();
+  for (let i = 0; i < 40; i++) {   
+    const z = -168 + ((i >> 1) * 9 + (bgY / U3) % 9);
+    d.position.set((i & 1 ? 1 : -1) * ((C.ROAD_R - C.ROAD_L) / U3 / 2 + 2.7), 1.7, z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix();
     R.postIM.setMatrixAt(i, d.matrix);
   }
   R.postIM.instanceMatrix.needsUpdate = true;
   
   const run = bgY / U3;
-  R.towers.forEach((t, i) => { t.position.z = -150 + ((i * 36 + run) % 180); });
-  R.islands.forEach(o => { o.position.set(o.userData.x, 0, -150 + ((o.userData.z0 + 150 + run * 0.6) % 170 + 170) % 170); });
+  R.lots.forEach(o => { o.position.set(o.userData.x, 0, -164 + ((o.userData.z0 + run) % 176)); });
+  for (const fl of R.flames) { const k = 1 + 0.15 * Math.sin(g.t * 11 + fl.ph) + 0.08 * Math.sin(g.t * 23 + fl.ph); fl.f.scale.set(1, k, 1); fl.c.scale.set(1, 2 - k, 1); }
   R.clouds.forEach(o => { o.position.set(o.userData.x, o.userData.y, -150 + ((o.userData.z0 + 150 + run * 0.15) % 140 + 140) % 140); });
   
   const AH = R.ah = ahead3D(g);

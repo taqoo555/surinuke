@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v21';
+const VERSION = 'v22';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -48,7 +48,7 @@ const CONFIG = {
   STAGE_GROW: 1.30,
   
   GRUNT_HP: 4, BRUTE_HP: 45,   
-  SHOOTER_HP: 12, BOSS_HP: 7000,   
+  SHOOTER_HP: 12, BOSS_HP: 1500,      
   BOSS_ADV: 16,                      
   BOSS_CRUSH: 0.08,               
   
@@ -77,12 +77,12 @@ const CONFIG = {
   
   TIRE_SHOW: 10,                  
   
-  TIRE_HP: 130,                       
+  TIRE_HP: 40,                        
   CLASH: 25,                      
   
-  SQUAD_ROWS: 2,                  
+  SQUAD_ROWS: 1,                     
   RED_MIN: 12, RED_MAX: 26,       
-  TIRE_BASE: 250,                   
+  TIRE_BASE: 120,                   
   TRACK_GAP: 230,                 
   CHUNKS: 10,                         
   RATE_UP: 0.2,                   
@@ -110,7 +110,8 @@ const CONFIG = {
   
   
   GATE_HIT: 2.5,   
-  WIDE_ARMY: 0.2,                 
+  GATE_PER_SEC: 7,                
+  WIDE_ARMY: 0,                      
   SHOT_RATE: 1.6,                 
   DIV_NEED: 30,                   
   
@@ -336,7 +337,13 @@ function shootGate(g, sd, b, x, y) {
   sd.hitT = 0.08;
   
   
-  const add = CONFIG.GATE_HIT * Math.sqrt(10 / Math.max(10, g.N)) * (b.flame ? 0.25 : b.rocket ? 2 : b.pellet ? 0.5 : 1);
+  
+  const now = g.t;
+  if (sd.bt == null) { sd.bt = now; sd.bud = 1; }
+  sd.bud = Math.min(CONFIG.GATE_PER_SEC, sd.bud + (now - sd.bt) * CONFIG.GATE_PER_SEC); sd.bt = now;
+  if (sd.bud < 1) return;
+  sd.bud -= 1;
+  const add = 1;
   if (sd.type === 'add') {
     const before = sd.v;
     sd.v = Math.min(sd.max, sd.v + add);
@@ -578,9 +585,10 @@ function laneOf(x) { return clamp(Math.floor((x - CONFIG.ROAD_L) / LANE_W), 0, 2
 function laneX(i) { return CONFIG.ROAD_L + LANE_W * (i + 0.5); }
 function slotBlue(g) {
   const sc = 1 + 0.3 * (g.stage - 1), r = rng();
-  if (r < 0.06) return { type: 'mul', v: 2, good: true, hitT: 0 };
   
-  const k = Math.round(rr(4, 10) * sc);
+  if (r < 0.15) return { type: 'mul', v: 2, good: true, hitT: 0 };
+  
+  const k = Math.round(rr(8, 18) * sc);
   return { type: 'add', v: k, max: Infinity, good: true, hitT: 0 };
 }
 function slotRed(g) {
@@ -611,7 +619,7 @@ function buildTrack(g) {
     
     const r = rng();
     if (c >= 2 && r < 0.35) {
-      const w = slotRed(g); w.v = Math.round(w.v * 2); w.wide = true;   
+      const w = slotRed(g); w.v = Math.round(w.v * 1.5); w.wide = true;   
       T.push({ dist: d += G, kind: 'row', lanes: [w, w, w] });
     } else {
       const pat = c < 2 ? 1 : r < 0.65 ? 0 : r < 0.85 ? 1 : 2;

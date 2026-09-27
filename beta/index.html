@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v25';
+const VERSION = 'v26';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -47,7 +47,7 @@ const CONFIG = {
   GATE_GROW: 0.15,                
 
   
-  LEVEL_GROW: 1.10,               
+  LEVEL_GROW: 1.22,               
   GRUNT_HP: 3, BRUTE_HP: 45,
   ENEMY_VY: 20,                   
   
@@ -56,14 +56,17 @@ const CONFIG = {
   
   TIRE_PER: 16,
   TIRE_BASE: 120, TIRE_HP: 40,    
-  WEAPON_TIRE: 2.5,               
+  WEAPON_POW: 1,                  
+  WEAPON_HP: 200, WEAPON_FIRST: 0.5,                
 
   BOSS_HP: 1000, CLASH: 25,       
 
   TRACK_GAP: 230,                 
   CHUNKS: 7,                      
   WIDE_RATE: 0.28,                
-  WALL_RATE: 0.26,                
+  WALL_RATE: 0.22,                
+  LANE_RATE: 0.4,                 
+  MON_BLUE: 1.3, MON_ROWS: 2,     
 
   
   UP_RATE: 0.10, UP_DMG: 0.12, UP_INCOME: 0.15,
@@ -135,6 +138,7 @@ function newRun(level, m, seed) {
     dist: 0, ti: 0, track: null, trackEnd: 1, chunk: 0, ramp: 1,
     coins: 0, coinAcc: 0, kills: 0, peak: 0,
     stats: { gate: 0, enemy: 0, tire: 0, boss: 0 },
+    wGot: 0, wMiss: 0,   
   };
   g.peak = g.N;
   return g;
@@ -218,15 +222,25 @@ const WEAPONS = [
   { name: 'BLASTER', rate: 1.50, dmg: 1.75, color: '#c98bff' },
   { name: 'LASER',   rate: 1.80, dmg: 2.20, color: '#ff8adf' },
 ];
-function weapon(g) { return WEAPONS[Math.min(WEAPONS.length - 1, g.wlv)]; }
-function slotWeaponTire(g) { const t = slotTire(g, CONFIG.WEAPON_TIRE); t.weapon = true; return t; }
+
+function weapon(g) {
+  const w = WEAPONS[Math.min(WEAPONS.length - 1, g.wlv)], k = CONFIG.WEAPON_POW;
+  return { name: w.name, color: w.color, rate: Math.pow(w.rate, k), dmg: Math.pow(w.dmg, k) };
+}
+
+function slotWeaponTire(g) {
+  const hp = Math.round(CONFIG.WEAPON_HP * g.mul * (g.wk === 0 ? CONFIG.WEAPON_FIRST : 1 + 0.5 * (g.wk - 1)));   
+  g.wk++;
+  return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0, weapon: true };
+}
 function tireCost(t) { return Math.max(0, Math.ceil(t.hp / CONFIG.TIRE_PER)); }
 function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 
 function buildTrack(g) {
   const C = CONFIG, G = C.TRACK_GAP, T = [];
-  let d = 0;
+  let d = 0, theme = null, left = 0, up = 0, k = 0;
+  g.wk = 0;
   const chunks = C.CHUNKS + Math.min(6, Math.floor((g.level - 1) / 2));
   for (let c = 0; c < chunks; c++) {
     
@@ -234,17 +248,30 @@ function buildTrack(g) {
     
     const rows = c < 2 ? 1 : 1 + Math.floor(c / 3) + Math.floor((g.level - 1) / 3);
     const cols = c < 2 ? c + 1 : Math.min(6, 1 + c + Math.floor(g.level / 3));
+    if (left <= 0) {   
+      const t = rng();
+      theme = c < 2 ? 'open' : t < C.LANE_RATE ? 'lane' : t < C.LANE_RATE + C.WALL_RATE ? 'wall' : 'open';
+      if (theme === 'wall' && c >= chunks - 1) theme = 'open';
+      left = c < 2 ? 2 : theme === 'lane' ? 3 : theme === 'wall' ? 1 : 2;
+      up = rng() < 0.5 ? 0 : 2; k = 0;
+    }
+    left--;
     const r = rng();
-    if (c >= 2 && r < C.WIDE_RATE) {
+    if (theme === 'lane') {
       
-      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows: rows + 1, cols: 5, brute: g.level >= 3 && rng() < 0.4 });
-      const w = slotRed(g, 1.5); w.wide = true;
-      T.push({ dist: d += 170, kind: 'row', lanes: [w, w, w] });
+      const mon = [0, 1, 2].filter(i => i !== up);
+      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 5, brute: g.level >= 3 && k === 1 });
+      const upSlot = k % 3 === 0 ? slotWeaponTire(g) : k % 3 === 1 ? slotBlue(g, 0.7, true) : slotRed(g, 0.6);
+      const big = rng() < 0.5 ? 0 : 1;
+      const lanes = [];
+      lanes[up] = upSlot; lanes[mon[big]] = slotBlue(g, C.MON_BLUE); lanes[mon[1 - big]] = slotRed(g);
+      T.push({ dist: d += G * 0.9, kind: 'row', lanes });
+      k++;
       continue;
     }
-    T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: [ri(0, 2)], rows, cols, soft: c < 2 });
-    if (c >= 2 && r < C.WIDE_RATE + C.WALL_RATE) {
+    if (theme === 'wall') {
       
+      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
       const plans = shuffle3([
         [slotBlue(g, 0.8), 'squad'],
         [slotRed(g, 1.3), { type: 'mul', v: 2, good: true, hitT: 0 }],
@@ -259,7 +286,16 @@ function buildTrack(g) {
       d = w0 + len;
       continue;
     }
-    if (c % 3 === 2) {
+    
+    if (c >= 2 && r < C.WIDE_RATE) {
+      
+      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows: rows + 1, cols: 5, brute: g.level >= 3 && rng() < 0.4 });
+      const w = slotRed(g, 1.5); w.wide = true;
+      T.push({ dist: d += 170, kind: 'row', lanes: [w, w, w] });
+      continue;
+    }
+    T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: [ri(0, 2)], rows, cols, soft: c < 2 });
+    if (c >= 2 && r < C.WIDE_RATE + 0.3) {
       
       const open = ri(0, 2), wl = (open + ri(1, 2)) % 3;
       T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : i === wl ? slotWeaponTire(g) : slotTire(g)) });
@@ -267,9 +303,8 @@ function buildTrack(g) {
       continue;
     }
     
-    const pat = c < 2 ? 1 : r < 0.75 ? 0 : r < 0.9 ? 1 : 2;
-    const tire = () => rng() < 0.3 ? slotWeaponTire(g) : slotTire(g);
-    const lanes = pat === 0 ? [slotRed(g), slotRed(g), tire()] : pat === 1 ? [slotBlue(g, 1, c < 2), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), tire()];   
+    const pat = c < 2 ? 1 : r < 0.8 ? 0 : r < 0.9 ? 1 : 2;
+    const lanes = pat === 0 ? [slotRed(g), slotRed(g), slotTire(g)] : pat === 1 ? [slotBlue(g, 1, c < 2), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), slotTire(g)];   
     T.push({ dist: d += G, kind: 'row', lanes: shuffle3(lanes) });
   }
   g.ramp = 1; g.chunk = chunks;
@@ -369,6 +404,7 @@ function update(g, dt) {
     for (const sl of row.lanes) if (sl.hitT > 0) sl.hitT -= dt;
     if (row.done || row.y < C.LEADER_Y) continue;
     row.done = true;
+    for (const t of row.lanes) if (t.weapon && !t.got && !t.counted) { t.counted = true; g.wMiss++; }
     const inL = [0, 0, 0]; let tot = 0;
     for (const u of g.units) { inL[laneOf(u.x)] += u.w; tot += u.w; }
     
@@ -430,7 +466,7 @@ function update(g, dt) {
         while (sl.coinAcc >= sl.max / 8) { sl.coinAcc -= sl.max / 8; addCoins(g, 1 + Math.floor(g.level / 2), b.x, row.y - 10); }
         if (sl.hp <= 0) {
           if (sl.weapon && !sl.got) {   
-            sl.got = true; g.wlv = Math.min(WEAPONS.length - 1, g.wlv + 1);
+            sl.got = true; g.wGot++; g.wlv = Math.min(WEAPONS.length - 1, g.wlv + 1);
             if (!SIM) { weaponFx(weapon(g)); burst(laneX(li), row.y, weapon(g).color, 30); sfx('combo'); shake(5); }
           }
           if (!SIM) { burst(laneX(li), row.y, '#666', 26); popText(laneX(li), row.y - 20, 'BREAK!', '#fff', 18); sfx('flip'); shake(4); }
@@ -560,7 +596,7 @@ function runSim(bot, level, m, seed) {
   while (!g.over && steps < 60 * 400) { botStep(g, bot, st); update(g, 1 / 60); steps++; }
   SIM = false;
   return { result: g.over, t: +g.t.toFixed(1), N: g.N, peak: g.peak, coins: g.coins, kills: g.kills, wlv: g.wlv, lost: g.stats,
-           prog: +Math.min(1, g.dist / g.trackEnd).toFixed(2), bossHp: g.boss ? Math.round(g.boss.hp) : null };
+           wGot: g.wGot, wMiss: g.wMiss, prog: +Math.min(1, g.dist / g.trackEnd).toFixed(2), bossHp: g.boss ? Math.round(g.boss.hp) : null };
 }
 function withCfg(cfg, fn) {
   const saved = {};
@@ -816,7 +852,7 @@ function drawTire(g, sl, cx, y) {
   }
   ctx.fillStyle = '#6b7080'; ctx.beginPath(); ctx.ellipse(cx, y - 6, rw * 0.45, 4, 0, 0, 6.28); ctx.fill();
   txt(String(tireCost(sl)), cx, y + 24, sl.hitT > 0 ? 20 : 18, '#ff9a5a');   
-  if (sl.weapon) {
+  if (sl.weapon && g.wlv < WEAPONS.length - 1) {   
     
     const nx = WEAPONS[Math.min(WEAPONS.length - 1, g.wlv + 1)], gy = y - 30 + Math.sin(performance.now() / 200) * 2;
     ctx.fillStyle = '#0b0e18'; ctx.fillRect(cx - 17, gy - 6, 34, 12);

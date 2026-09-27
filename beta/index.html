@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v57';
+const VERSION = 'v58';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -43,8 +43,9 @@ const CONFIG = {
 
   
   GATE_PER_SEC: 7,
+  GATE_POS_PER_SEC: 3,            
   DIV_NEED: 30,                   
-  BLUE_MIN: 7, BLUE_MAX: 18,      
+  BLUE_MIN: 12, BLUE_MAX: 26,      
   
   RANGE: 400,   
   MOVE_RATE: 0.6,                 
@@ -55,22 +56,23 @@ const CONFIG = {
   DIV_GATES: false,               
   RED_GROW: 0.10,                 
   ROW_MAX: 9,                     
-  ROW_EVERY: 1,                      
+  ROW_EVERY: 2,                      
 
   
   LEVEL_GROW: 1.12,                  
-  GRUNT_HP: 2, BRUTE_HP: 45,      
-  HYD_HP: 5, HYD_R: 70,           
-  GRAB_HP: 8, GRAB_BITE: 4,       
+  GRUNT_HP: 1.5, BRUTE_HP: 45,      
+  HYD_HP: 4, HYD_RATE: 0.5,       
+  HYD_WAVE: 380, HYD_BAND: 110,   
+  BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
+  SPREAD_HP: 7, SPREAD_EVERY: 0.9, SPREAD_MAX: 8,   
   LAVA_HP: 14, LAVA_BITE: 5,      
-  SMOKE_HITS: 10,                 
   ENEMY_VY: 10,                   
   
   HOMING: 45, CHASE_RANGE: 150,
   SURGE_RANGE: 230, SURGE: 60, SURGE_HOME: 1.5,   
 
   
-  TIRE_POW: 0.35,                 
+  TIRE_POW: 0.25,                    
   TIRE_SHOW: 10, TIRE_BRITTLE: 1.0,   
         
   TIRE_BASE: 120, TIRE_HP: 40,    
@@ -81,6 +83,8 @@ const CONFIG = {
 
   STAGE1_HP: 0.7,                 
   BIG_BOSS: 1.4,                  
+  BOSS_STOP: 250,                 
+  EMBER_EVERY: 1.3, EMBER_MIN: 0.55, EMBER_T: 1.0, EMBER_R: 22, EMBER_FRAC: 0.05, BOSS_RAGE: 20,   
   BOSS_HP: 800, CLASH: 25,         
 
   
@@ -95,7 +99,7 @@ const CONFIG = {
   EASY_BLUE: [1, 5],              
   HARD_RATE: 0.5, HARD_ROWS: 1,   
   TUTOR_RED: [30, 8],             
-  GUARD_HP: 0.8,                  
+  GUARD_HP: 0.5,                  
   FINAL_ROWS: 3,                  
   OPEN_GROW: 0.6,                 
   SQUAD_AFTER: 1.0,               
@@ -109,7 +113,7 @@ const CONFIG = {
   
   UP_RATE: 0.10, UP_DMG: 0.12, UP_INCOME: 0.15,
   UP_ARMY: 2,                     
-  COST_BASE: 40, COST_GROW: 1.32, 
+  COST_BASE: 25, COST_GROW: 1.32,    
 
   VOLUME: 0.35,
 };
@@ -331,27 +335,21 @@ function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, 
 
 const STAGES = [
   { name: 'FIRST STEPS',  lane: 0.25, wall: 0.00, wide: 0.10, tire: 0.05, move: 0.3, scene: 'bridge' },      
-  { name: 'MOVING GATES', lane: 0.10, wall: 0.05, wide: 0.10, tire: 0.10, move: 1.0, scene: 'city' },
-  { name: 'POWER LANE',   lane: 0.75, wall: 0.00, wide: 0.10, tire: 0.10, move: 0.5, scene: 'bridge' },
-  { name: 'BLACK WALLS',  lane: 0.10, wall: 0.60, wide: 0.10, tire: 0.10, move: 0.5, scene: 'city' },
-  { name: 'THE HORDE',    lane: 0.15, wall: 0.10, wide: 0.45, tire: 0.10, move: 0.5, scene: 'city' },
+  { name: 'MOVING GATES', lane: 0.10, wall: 0.05, wide: 0.10, tire: 0.10, move: 1.0, scene: 'home' },     
+  { name: 'POWER LANE',   lane: 0.75, wall: 0.00, wide: 0.10, tire: 0.10, move: 0.5, scene: 'office' },
+  { name: 'BLACK WALLS',  lane: 0.10, wall: 0.60, wide: 0.10, tire: 0.10, move: 0.5, scene: 'home' },
+  { name: 'THE HORDE',    lane: 0.15, wall: 0.10, wide: 0.45, tire: 0.10, move: 0.5, scene: 'office' },
   { name: 'TIRE FIELD',   lane: 0.10, wall: 0.10, wide: 0.10, tire: 0.45, move: 0.5, scene: 'bridge' },
 ];
 
-const MIX = [{ hydrant: 0, grab: 0, lava: 0 }, { hydrant: 0.5, grab: 0, lava: 0 }, { hydrant: 0.3, grab: 0.4, lava: 0 },
-             { hydrant: 0.3, grab: 0, lava: 0.4 }, { hydrant: 0.5, grab: 0.3, lava: 0.2 }, { hydrant: 0.3, grab: 0.3, lava: 0.3 }];
-
-const SMOKE = [0, 0, 0.25, 0.25, 0.25, 0.3];
+const MIX = [{ ball: 0, spread: 0, lava: 0 }, { ball: 0.4, spread: 0, lava: 0 }, { ball: 0.2, spread: 0.4, lava: 0 },
+             { ball: 0.2, spread: 0, lava: 0.4 }, { ball: 0, spread: 0.4, lava: 0.3 }, { ball: 0.3, spread: 0.3, lava: 0.3 }];
 function stageOf(level) { return STAGES[(level - 1) % STAGES.length]; }
 function mixOf(g) {
   if (g.level < 2) return null;
   const m = MIX[(g.level - 1) % MIX.length], k = g.level > 6 ? 1.2 : 1;
-  return { hydrant: rng() < m.hydrant * k ? 1 : 0, grab: rng() < m.grab * k ? 1 : 0, lava: rng() < m.lava * k ? 1 : 0 };
-}
-function smokeRow(g, fr) {
-  if (rng() >= SMOKE[(g.level - 1) % SMOKE.length] * (g.level > 6 ? 1.2 : 1)) return;
-  const gates = fr.parts.filter(p => p.type === 'add' || p.type === 'mul');
-  if (gates.length) gates[ri(0, gates.length - 1)].smoke = CONFIG.SMOKE_HITS;
+  return { ball: rng() < m.ball * k ? 2 : 0, spread: rng() < m.spread * k ? 1 : 0, lava: rng() < m.lava * k ? 1 : 0,
+           hydrant: stageOf(g.level).scene === 'home' && rng() < CONFIG.HYD_RATE ? 1 : 0 };
 }
 
 function freeRow(g, c) {
@@ -490,7 +488,6 @@ function buildTrack(g) {
     const sl = fr.guard != null ? (fr.guard + ri(1, 2)) % 3 : fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2);
     T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? C.HARD_ROWS : 0), cols: strong ? Math.max(cols, 5) : cols, brute: strong && g.level >= 3, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
     if (fr.guard != null) T.push({ dist: d + G * 0.55, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
-    if (c >= 2 && !tut) smokeRow(g, fr);
     T.push({ dist: d += G, kind: 'row', free: fr });
     if (c >= 1 && rng() < C.FILLER) T.push({ dist: d + G * 0.45, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });   
   }
@@ -515,14 +512,36 @@ function spawnSquad(g, lane, rows, cols, brute, soft, mix) {
       hk: rr(0.6, 1.2), wob: rr(0.5, 2.5), wf: rr(1.2, 3), ph: rr(0, 6.28) });
   if (brute) g.enemies.push({ kind: 'brute', lane, x: laneX(lane), y: -44 - rows * 19, r: 19, hp: C.BRUTE_HP * em, max: C.BRUTE_HP * em, vy: C.ENEMY_VY, bite: 6, hk: 0.5 });
   
-  if (mix && mix.hydrant && rows * cols >= 6) g.enemies.push({ kind: 'hydrant', lane, x: laneX(lane), y: -30 - Math.floor(rows / 2) * 19 - 4, r: 10, hp: C.HYD_HP * em, max: C.HYD_HP * em, vy: 0, bite: 0, hk: 0, fixed: true });
-  if (mix && mix.grab) g.enemies.push({ kind: 'grab', lane, x: laneX(lane) + rr(-10, 10), y: -44 - rows * 19 - (brute ? 30 : 0), r: 12, hp: C.GRAB_HP * em, max: C.GRAB_HP * em, vy: C.ENEMY_VY, bite: C.GRAB_BITE, hk: 1.3, ph: rr(0, 6.28), cap: 0 });
-  if (mix && mix.lava) g.enemies.push({ kind: 'lava', lane, x: laneX(lane) + rr(-10, 10), y: -50 - rows * 19 - (brute ? 30 : 0) - (mix.grab ? 30 : 0), r: 15, hp: C.LAVA_HP * em, max: C.LAVA_HP * em, vy: C.ENEMY_VY, bite: C.LAVA_BITE, hk: 0.7, ph: rr(0, 6.28) });
+  if (mix && mix.hydrant && rows * cols >= 6) { const side = lane === 2 ? 1 : 0;   
+    g.enemies.push({ kind: 'hydrant', lane: side ? 2 : 0, x: side ? C.ROAD_R - 12 : C.ROAD_L + 12, y: 40, r: 10, hp: C.HYD_HP * em, max: C.HYD_HP * em, vy: 0, bite: 0, hk: 0, fixed: true }); }
+  if (mix && mix.ball) for (let k = 0; k < mix.ball; k++)
+    g.enemies.push({ kind: 'ball', lane, x: laneX(lane) + rr(-20, 20), y: -10 + k * 30, r: 8, hp: C.BALL_HP * em, max: C.BALL_HP * em, vy: C.ENEMY_VY + C.BALL_VY, vx: (rng() < 0.5 ? -1 : 1) * C.BALL_VX, bite: 2, hk: 0, ph: rr(0, 6.28) });
+  if (mix && mix.spread) g.enemies.push({ kind: 'spread', lane, x: laneX(lane) + rr(-10, 10), y: -44 - rows * 19 - (brute ? 30 : 0), r: 13, hp: C.SPREAD_HP * em, max: C.SPREAD_HP * em, vy: C.ENEMY_VY, bite: 3, hk: 0.8, ph: rr(0, 6.28), purple: true, kids: 0, kt: C.SPREAD_EVERY });
+  if (mix && mix.lava) g.enemies.push({ kind: 'lava', lane, x: laneX(lane) + rr(-10, 10), y: -50 - rows * 19 - (brute ? 30 : 0) - (mix.spread ? 30 : 0), r: 15, hp: C.LAVA_HP * em, max: C.LAVA_HP * em, vy: C.ENEMY_VY, bite: C.LAVA_BITE, hk: 0.7, ph: rr(0, 6.28) });
 }
 
 function hydrantBurst(g, e) {
-  for (const o of g.enemies) if (o !== e && o.hp > 0 && o.kind !== 'hydrant' && Math.hypot(o.x - e.x, o.y - e.y) < CONFIG.HYD_R) kill(g, o);
-  if (!SIM) { if (R3.on) { fxSplash(e.x, e.y, 60); fxSteam(e.x, e.y, 14); } else burst(e.x, e.y, '#6fc3ff', 40); popText(e.x, e.y - 30, 'SPLASH!', '#bfefff', 20); sfx('flip'); shake(5); }
+  (g.waves = g.waves || []).push({ x: e.x, y: e.y, r: 0 });
+  if (!SIM) { if (R3.on) { fxSplash(e.x, e.y, 50); fxSteam(e.x, e.y, 10); } else burst(e.x, e.y, '#6fc3ff', 40); popText(e.x < 180 ? e.x + 50 : e.x - 50, e.y - 30, 'SPLASH!', '#bfefff', 22); sfx('flip'); shake(6); }
+}
+function updateWaves(g, dt) {
+  if (!g.waves || !g.waves.length) return;
+  const C = CONFIG;
+  for (const w of g.waves) {
+    w.y += C.SCROLL * dt; w.r += C.HYD_WAVE * dt;
+    for (const o of g.enemies) if (o.hp > 0 && o.kind !== 'hydrant' && Math.abs(o.y - w.y) < C.HYD_BAND && Math.abs(o.x - w.x) < w.r) kill(g, o);
+    if (!SIM) for (const sg of [-1, 1]) { const fx = w.x + sg * w.r; if (fx > C.ROAD_L && fx < C.ROAD_R) { if (R3.on) fxSplash(fx, w.y + rr2(-C.HYD_BAND, C.HYD_BAND), 3); else burst(fx, w.y, '#6fc3ff', 2); } }
+  }
+  g.waves = g.waves.filter(w => w.r < C.ROAD_R - C.ROAD_L + 20);
+}
+
+function spreadFlame(g, e, dt) {
+  if (e.y < -20 || e.kids >= CONFIG.SPREAD_MAX) return;
+  e.kt -= dt; if (e.kt > 0) return;
+  e.kt = CONFIG.SPREAD_EVERY; e.kids++;
+  const hp = CONFIG.GRUNT_HP * g.mul * 0.8, a = rr(0, 6.28);
+  g.enemies.push({ kind: 'grunt', purple: true, lane: e.lane, x: clamp(e.x + Math.cos(a) * 18, CONFIG.ROAD_L + 8, CONFIG.ROAD_R - 8), y: e.y + 6 + Math.abs(Math.sin(a)) * 10, r: 8, hp, max: hp, vy: CONFIG.ENEMY_VY, bite: 1, hk: rr(0.6, 1.2), ph: rr(0, 6.28) });
+  if (!SIM && R3.on) fxSparks(e.x, e.y, 3);
 }
 function trackFlow(g, dt, scroll) {
   if (!g.track) { g.track = buildTrack(g); g.trackEnd = g.track[g.track.length - 1].dist; }
@@ -538,7 +557,8 @@ function trackFlow(g, dt, scroll) {
 
 function bossKindOf(level) {
   if (level % 6 === 0) return (level / 6) % 2 === 1 ? 'majin' : 'dragon';
-  return stageOf(level).scene === 'bridge' ? 'truck' : 'house';
+  const sc = stageOf(level).scene;
+  return sc === 'bridge' ? 'truck' : sc === 'office' ? 'tower' : 'house';   
 }
 function spawnBoss(g) {
   
@@ -556,11 +576,12 @@ function gateLabel(sd) {
 
 function shootGate(g, sd, x, y) {
   sd.hitT = 0.08;
+  
+  const rate = sd.type === 'add' && sd.v >= 0 ? CONFIG.GATE_POS_PER_SEC : CONFIG.GATE_PER_SEC;
   if (sd.bt == null) { sd.bt = g.t; sd.bud = 1; }
-  sd.bud = Math.min(CONFIG.GATE_PER_SEC, sd.bud + (g.t - sd.bt) * CONFIG.GATE_PER_SEC); sd.bt = g.t;
+  sd.bud = Math.min(rate, sd.bud + (g.t - sd.bt) * rate); sd.bt = g.t;
   if (sd.bud < 1) return;
   sd.bud -= 1;
-  if (sd.smoke > 0) { if (--sd.smoke === 0 && !SIM) { if (R3.on) fxSteam(x, y, 12); popText(x, y - 28, gateLabel(sd), '#fff', 18); } return; }   
   if (sd.type === 'add') {
     const before = sd.v;
     sd.v += 1;
@@ -623,9 +644,10 @@ function update(g, dt) {
     
     for (const [t, n] of inS) {
       if (t.type !== 'tire' || t.hp <= 0 || n <= 0) continue;
+      
       const lost = Math.min(n, g.N), x = cxOf(t);
-      t.hp = 0; t.crashed = true;
-      if (!SIM) { burst(x, row.y, '#555', 40); burst(x, row.y, '#6fc3ff', 20); shake(10); popText(x, row.y - 50, 'CRASH!', '#ff5a6a', 22); }
+      t.crashed = true;
+      if (!SIM) { burst(x, row.y, '#6fc3ff', 24); shake(10); popText(x, row.y - 50, 'BLOCKED!', '#ff5a6a', 22); }
       loseUnits(g, lost, 'tire', x, row.y - 30);
       if (g.over) return;
     }
@@ -704,8 +726,8 @@ function update(g, dt) {
   for (const e of g.enemies) {
     
     if (e.fixed) { e.y += scroll * dt; if (e.flash > 0) e.flash -= dt; continue; }   
-    const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth && !(e.grabT > 0);
-    if (e.grabT > 0) e.grabT -= dt;
+    const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth;
+    if (e.kind === 'spread') spreadFlame(g, e, dt);
     const slow = e.kind === 'lava' ? 0.35 + 0.65 * e.hp / e.max : 1;   
     e.y += (scroll + (e.vy + (near ? C.SURGE : 0)) * slow) * dt;
     if (near) {
@@ -713,19 +735,15 @@ function update(g, dt) {
       e.x += Math.sin(g.t * 9 + (e.ph || 0) * 3) * 38 * dt;   
     }
     if (e.wob) e.x += Math.cos(g.t * e.wf + e.ph) * e.wob * e.wf * dt;
+    if (e.vx) e.x += e.vx * dt;   
+    const x0 = e.x;
     e.x = clamp(e.x, C.ROAD_L + 6, C.ROAD_R - 6);
     if (g.walls.some(w => e.y <= w.y && e.y >= w.y - w.len))
       e.x = clamp(e.x, C.ROAD_L + LANE_W * e.lane + e.r + 4, C.ROAD_L + LANE_W * (e.lane + 1) - e.r - 4);
+    if (e.kind === 'ball' && e.x !== x0) e.vx = e.x > x0 ? Math.abs(e.vx) : -Math.abs(e.vx);
     if (e.hp > 0 && e.y > C.LEADER_Y - 12 - e.r && e.y < C.LEADER_Y + g.cDepth + e.r && Math.abs(e.x - g.lx) < R + e.r) {
       const u = g.units.find(u => Math.hypot(u.x - e.x, u.y - e.y) < e.r + u.d / 2);
-      if (u && e.kind === 'grab') {   
-        const n = Math.min(g.N, e.bite);
-        g.N -= n; g.stats.enemy += n; e.cap += n;
-        e.r = Math.min(26, 12 + Math.sqrt(e.cap) * 2.2); e.hp += n * C.GRUNT_HP * g.mul; e.max += n * C.GRUNT_HP * g.mul;
-        e.y -= 110; e.grabT = 1.2;
-        if (!SIM) { popText(e.x, e.y + 60, '−' + n, '#ff5a6a', 18); sfx('lose'); shake(3); }
-        if (g.N <= 0) { g.over = 'fail'; if (!SIM) sfx('fail'); return; }
-      } else if (u) {
+      if (u) {
         const bite = Math.ceil(e.bite * e.hp / e.max);
         kill(g, e, true);
         loseUnits(g, bite, 'enemy', e.x, e.y);
@@ -733,31 +751,42 @@ function update(g, dt) {
       }
     }
   }
+  updateWaves(g, dt);   
   g.enemies = g.enemies.filter(e => e.hp > 0 && e.y < C.H + 40);
 
   
   const B = g.boss;
   if (B && B.hp > 0) {
     B.t += dt; B.flash = Math.max(0, B.flash - dt);
-    const front = C.LEADER_Y - 14 - B.r;
-    if (B.y < front) B.y = Math.min(front, B.y + scroll * dt);
-    
+    const stop = C.LEADER_Y - C.BOSS_STOP;
+    if (B.y < stop) B.y = Math.min(stop, B.y + scroll * dt);
+    const kind = bossKindOf(g.level), big = kind === 'majin' || kind === 'dragon';
+    if (big) B.x = 180 + Math.sin(B.t * 0.7) * (C.ROAD_R - C.ROAD_L - 2 * B.r) * 0.45;
     B.x = clamp(B.x, C.ROAD_L + B.r, C.ROAD_R - B.r);
-    if (B.y >= front && Math.abs(B.x - g.lx) < B.r + formW(g) / 2) {
-      if (!B.melee) { B.melee = { tick: 0, chunk: Math.max(1, Math.ceil(B.hp / C.CLASH / 24)) }; if (!SIM) { shake(10); sfx('boss'); } }
-      B.melee.tick -= dt;
-      while (B.melee.tick <= 0 && B.hp > 0 && g.N > 0) {
-        B.melee.tick += 0.05;
-        const n = Math.min(B.melee.chunk, g.N, Math.ceil(B.hp / C.CLASH));
-        B.hp -= n * C.CLASH; B.flash = 0.05;
-        g.N -= n; g.stats.boss += n;
-        if (!SIM) { burst(B.x + rr(-40, 40), B.y + B.r + rr(-6, 10), rr(0, 1) < 0.5 ? '#7a7f8a' : '#ffb36b', 6); if (rng() < 0.3) popText(B.x + rr(-30, 30), B.y + B.r, '−' + n, '#ff5a6a', 13); shake(3); }
+    if (B.y >= stop) {
+      B.et = (B.et == null ? 0.8 : B.et) - dt * (B.t > C.BOSS_RAGE ? 2 : 1);   
+      if (B.et <= 0) {
+        B.et = Math.max(C.EMBER_MIN, C.EMBER_EVERY - 0.04 * g.level);
+        for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ x0: B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: 0, T: C.EMBER_T });
       }
-      if (g.N <= 0) { g.N = 0; g.over = 'fail'; if (!SIM) sfx('fail'); return; }
     }
   }
+  
+  if (g.embers && g.embers.length) {
+    for (const em of g.embers) {
+      em.t += dt;
+      if (em.t >= em.T && !em.done) {
+        em.done = true;
+        let n = 0; for (const u of g.units) if (Math.hypot(u.x - em.tx, u.y - em.ty) < C.EMBER_R + u.d / 2) n += u.w;
+        n = Math.min(n, Math.ceil(3 + g.N * C.EMBER_FRAC));
+        if (!SIM) { if (R3.on) { fxSparks(em.tx, em.ty, 10); fxSmoke(em.tx, em.ty, 3); } else burst(em.tx, em.ty, '#ff9a3a', 16); shake(2); }
+        if (n > 0) { loseUnits(g, n, 'boss', em.tx, em.ty - 20); if (g.over) return; }
+      }
+    }
+    g.embers = g.embers.filter(em => !em.done);
+  }
   if (B && B.hp <= 0 && !g.over) {
-    g.over = 'clear';
+    g.over = 'clear'; g.embers = [];
     addCoins(g, 40 + 12 * g.level, B.x, B.y);
     if (!SIM) { bigBoom(B.x, B.y); sfx('clear'); }
   }
@@ -779,12 +808,8 @@ function hurt(g, e, d) {
 function kill(g, e, contact) {
   if (e.dead) return;
   e.dead = true; e.hp = 0;
-  if (!contact) { g.kills++; addCoins(g, ({ brute: 6, grab: 3, lava: 4, hydrant: 2 }[e.kind] || 1) * (1 + Math.floor(g.level / 2)), e.x, e.y); }
+  if (!contact) { g.kills++; addCoins(g, ({ brute: 6, spread: 3, ball: 2, lava: 4, hydrant: 2 }[e.kind] || 1) * (1 + Math.floor(g.level / 2)), e.x, e.y); }
   if (e.kind === 'hydrant') hydrantBurst(g, e);
-  if (e.kind === 'grab' && e.cap > 0 && !contact) {   
-    g.N += e.cap; g.peak = Math.max(g.peak, g.N);
-    if (!SIM) { popText(e.x, e.y - 24, '+' + e.cap, '#6fc3ff', 22); sfx('gate'); }
-  }
   if (!SIM && R3.on) { fxSteam(e.x, e.y, e.kind === 'brute' ? 8 : 4); fxSparks(e.x, e.y, e.kind === 'brute' ? 12 : 5); sfx('kill'); if (e.kind === 'brute') shake(4); }   
   else if (!SIM) { burst(e.x, e.y, '#ffffff', e.kind === 'brute' ? 14 : 5); burst(e.x, e.y, e.kind === 'brute' ? '#ff7a1a' : '#ffb347', e.kind === 'brute' ? 16 : 5);   
    sfx('kill'); if (e.kind === 'brute') shake(4); }
@@ -796,10 +821,9 @@ let SIM = false;
 function projVal(g, sl, t, shots, dps) {
   const C = CONFIG, tr = Math.min(t, C.RANGE / C.SCROLL), grow = Math.min(C.GATE_PER_SEC, shots) * tr * 0.6;   
   if (sl.type === 'empty') return 0;
-  if (sl.smoke > 0 && sl.smoke > Math.min(C.GATE_PER_SEC, shots) * tr * 0.6) return 0;   
   if (sl.type === 'mul') return g.N * (sl.v - 1);
   if (sl.type === 'div') return sl.charge + grow >= sl.need ? g.N : -g.N / 2;
-  if (sl.type === 'add') return sl.v + grow;
+  if (sl.type === 'add') { const up = Math.min(-Math.min(0, sl.v), grow), rest = (tr * 0.6 - up / Math.max(1e-6, Math.min(C.GATE_PER_SEC, shots))) * Math.min(C.GATE_POS_PER_SEC, shots); return sl.v + up + Math.max(0, rest); }   
   const rem = sl.hp - tireDmg(dps) * tr * 0.6;   
   return rem <= 0 ? (sl.weapon ? 20 + g.N * 0.3 : 3) : -g.N;
 }
@@ -812,7 +836,17 @@ function botStep(g, bot, st) {
     return;
   }
   if (g.lock != null) { g.target = laneX(g.lock); return; }
-  if (g.boss && !g.rows.some(r => !r.done)) { g.target = g.boss.x; return; }   
+  if (g.boss && !g.rows.some(r => !r.done)) {   
+    const B = g.boss, fw = formW(g) / 2;
+    let best = B.x, bv = -1e9;
+    for (let k = -3; k <= 3; k++) {
+      const x = clamp(B.x + k * B.r * 0.3, C.ROAD_L + fw, C.ROAD_R - fw);
+      let v = -Math.abs(x - g.lx) * 0.01 - Math.abs(k) * 0.2;
+      for (const em of g.embers || []) if (em.T - em.t < 0.9 && Math.abs(em.tx - x) < C.EMBER_R + fw) v -= 10;
+      if (v > bv) { bv = v; best = x; }
+    }
+    g.target = best; return;
+  }
   const W = weapon(g), shots = g.units.length * C.SHOT_RATE * g.rateMul * W.rate, dps = g.N * g.power * g.rateMul * W.rate * W.dmg;
   const w = g.walls.find(w => w.lane == null && w.y < C.LEADER_Y && w.y > C.LEADER_Y - 420);
   const rows = g.rows.filter(r => !r.done && r.y < C.LEADER_Y && (w ? r.y >= w.y - w.len - 5 : true)).sort((a, b) => b.y - a.y).filter((r, i, a) => i < (w ? 3 : a[0] && a[0].guard ? 2 : 1));   
@@ -1133,7 +1167,7 @@ function drawTire(g, sl, cx, y) {
   }
 }
 function drawGateSide(x0, x1, y, s, taken, dt) {
-  const col = s.smoke > 0 ? '#8a8f9c' : s.good ? '#3fa9ff' : '#ff4d5e';
+  const col = s.good ? '#3fa9ff' : '#ff4d5e';
   if (s.hitT > 0) s.hitT -= dt;
   
   const H = 46, top = y - H;
@@ -1149,12 +1183,12 @@ function drawGateSide(x0, x1, y, s, taken, dt) {
     txt('÷2', cx, cy - 4, 22, '#fff');
     ctx.fillStyle = '#000a'; ctx.fillRect(x0 + 8, cy + 12, x1 - x0 - 16, 5);
     ctx.fillStyle = '#3fa9ff'; ctx.fillRect(x0 + 8, cy + 12, (x1 - x0 - 16) * Math.min(1, s.charge / s.need), 5);
-  } else { const fs = clamp((x1 - x0) * 0.4, 12, 22); txt(s.smoke > 0 ? '?' : gateLabel(s), cx, cy, s.hitT > 0 ? fs + 3 : fs, '#fff'); }   
+  } else { const fs = clamp((x1 - x0) * 0.4, 12, 22); txt(gateLabel(s), cx, cy, s.hitT > 0 ? fs + 3 : fs, '#fff'); }   
 }
 function drawEnemies(g) {
   for (const e of g.enemies) {
     const br = e.kind === 'brute';
-    ctx.fillStyle = e.kind === 'hydrant' ? '#d8262a' : e.kind === 'grab' ? '#a3122e' : e.kind === 'lava' ? '#' + lavaCol(e).toString(16).padStart(6, '0') : br ? '#ff8a3a' : '#ff4d5e';
+    ctx.fillStyle = e.kind === 'hydrant' ? '#d8262a' : e.purple ? '#a04dff' : e.kind === 'ball' ? '#ffd21a' : e.kind === 'lava' ? '#' + lavaCol(e).toString(16).padStart(6, '0') : br ? '#ff8a3a' : '#ff4d5e';
     ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 6.28); ctx.fill();
     ctx.fillStyle = br ? '#ffc08a' : '#ff9aa4';   
     ctx.beginPath(); ctx.moveTo(e.x - e.r * 0.8, e.y - e.r * 0.4); ctx.lineTo(e.x - e.r * 0.6, e.y - e.r * 1.3); ctx.lineTo(e.x - e.r * 0.2, e.y - e.r * 0.8); ctx.fill();
@@ -1165,6 +1199,11 @@ function drawEnemies(g) {
       ctx.fillStyle = '#000a'; ctx.fillRect(e.x - e.r, e.y - e.r - 9, e.r * 2, 3);
       ctx.fillStyle = '#fff'; ctx.fillRect(e.x - e.r, e.y - e.r - 9, e.r * 2 * Math.max(0, e.hp / e.max), 3);
     }
+  }
+  for (const em of g.embers || []) {   
+    const k = clamp(em.t / em.T, 0, 1);
+    ctx.strokeStyle = 'rgba(255,60,40,' + (0.3 + 0.6 * k) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(em.tx, em.ty, CONFIG.EMBER_R, 0, 6.28); ctx.stroke();
+    ctx.fillStyle = '#ffa030'; ctx.beginPath(); ctx.arc(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k - Math.sin(k * Math.PI) * 60, 6, 0, 6.28); ctx.fill();
   }
   const B = g.boss;
   if (B && B.hp > 0) {
@@ -1422,8 +1461,11 @@ function init3D() {
     const fireMat = B(0xff7a1a), fireCore = B(0xffd23f);
     const lots = [], flames = [];
     const pick = (i, k, arr) => arr[(i * 7919 + k * 104729) % arr.length];
-    for (let i = 0; i < 32; i++) {
-      const side = i % 2 ? 1 : -1, gr = new T.Group(), kind = pick(i, 1, ['office', 'office', 'house', 'house', 'park', 'office', 'house']);
+    
+    const officeG = new T.Group(), homeG = new T.Group();
+    for (let i = 0; i < 64; i++) {
+      const town = i < 32 ? 'office' : 'home', side = i % 2 ? 1 : -1, gr = new T.Group();
+      const kind = pick(i, 1, town === 'office' ? ['office', 'office', 'store', 'office', 'plaza', 'store', 'office'] : ['house', 'house', 'park', 'house', 'house', 'park', 'house']);
       let top = 0, dep = 7;
       if (kind === 'office') {
         const h = 8 + (i * 13 % 9), w = 7 + (i % 3);
@@ -1435,7 +1477,28 @@ function init3D() {
         const body = new T.Mesh(new T.BoxGeometry(5, 3, 5), M(pick(i, 3, [0xf4e4c1, 0xe8c9a0, 0xdfe8d8, 0xf0d6d0]))); body.position.y = 1.5; body.castShadow = true; gr.add(body);
         const roof = new T.Mesh(new T.ConeGeometry(4.3, 2.4, 4), M(pick(i, 4, [0xc0503a, 0x7b4b3a, 0x3f5f8a]))); roof.position.y = 4.2; roof.rotation.y = Math.PI / 4; roof.castShadow = true; gr.add(roof);
         const door = new T.Mesh(new T.BoxGeometry(0.1, 1.4, 1), M(0x6b4a2e)); door.position.set(-side * 2.55, 0.7, 0); gr.add(door);
+        const fence = new T.Mesh(new T.BoxGeometry(0.12, 0.6, 5.6), M(0xf4f1ea)); fence.position.set(-side * 3.3, 0.3, 0); gr.add(fence);   
+        if (i % 3 === 0) {   
+          const hb = new T.Mesh(new T.CylinderGeometry(0.22, 0.26, 0.7, 10), M(0xd8262a)); hb.position.set(-side * 3.9, 0.35, 2.2); gr.add(hb);
+          const hc = new T.Mesh(new T.SphereGeometry(0.22, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), M(0xd8262a)); hc.position.set(-side * 3.9, 0.7, 2.2); gr.add(hc);
+        }
         top = 4.5;
+      } else if (kind === 'store') {   
+        dep = 9;
+        const h = 6 + (i % 3), w = 10;
+        const bld = new T.Mesh(new T.BoxGeometry(dep, h, w), M(pick(i, 6, [0xf2e6d8, 0xe6eef6, 0xf4efe2]))); bld.position.y = h / 2; bld.castShadow = true; gr.add(bld);
+        const band = new T.Mesh(new T.BoxGeometry(dep + 0.1, 0.7, w + 0.1), M(pick(i, 7, [0xd8453a, 0x2f7bd8, 0x2fa86a, 0xe0a02a]))); band.position.y = h - 1; gr.add(band);
+        const glassF = new T.Mesh(new T.BoxGeometry(0.1, 1.8, w - 1), M(0x4a6a8a)); glassF.position.set(-side * (dep / 2 + 0.02), 1.0, 0); gr.add(glassF);
+        const awn = new T.Mesh(new T.BoxGeometry(1.2, 0.15, w - 0.6), M(pick(i, 8, [0xd8453a, 0x2f7bd8, 0x2fa86a]))); awn.position.set(-side * (dep / 2 + 0.6), 2.2, 0); awn.rotation.z = side * 0.25; gr.add(awn);
+        const sign = new T.Mesh(new T.BoxGeometry(0.4, 1.6, w * 0.6), M(pick(i, 9, [0xffd23f, 0xff6a8a, 0x6fd3ff]))); sign.position.set(0, h + 0.9, 0); gr.add(sign);
+        top = h + 1.7;
+      } else if (kind === 'plaza') {   
+        dep = 8;
+        const pave = new T.Mesh(new T.BoxGeometry(8, 0.1, 9), M(0xcfc8bc)); pave.position.y = 0.05; pave.receiveShadow = true; gr.add(pave);
+        const pool = new T.Mesh(new T.CylinderGeometry(1.6, 1.8, 0.4, 16), M(0x9aa3b0)); pool.position.y = 0.2; gr.add(pool);
+        const wat = new T.Mesh(new T.CylinderGeometry(1.45, 1.45, 0.05, 16), M(0x5aa8e8)); wat.position.y = 0.42; gr.add(wat);
+        const spout = new T.Mesh(new T.CylinderGeometry(0.15, 0.25, 1.2, 8), M(0xbfe6ff)); spout.position.y = 1; gr.add(spout);
+        for (const [tx, tz] of [[-2.8, -3.2], [2.8, 3.2], [-2.8, 3.2], [2.8, -3.2]]) { const pl = new T.Mesh(new T.BoxGeometry(1.2, 0.5, 1.2), M(0x8a7a6a)); pl.position.set(tx, 0.25, tz); gr.add(pl); const bush = new T.Mesh(new T.SphereGeometry(0.8, 10, 8), M(0x3f9b3a)); bush.position.set(tx, 1, tz); gr.add(bush); }
       } else {
         dep = 9;
         const lawn = new T.Mesh(new T.BoxGeometry(9, 0.12, 9), M(0x6fbf5a)); lawn.position.y = 0.06; lawn.receiveShadow = true; gr.add(lawn);
@@ -1452,9 +1515,10 @@ function init3D() {
           flames.push({ f, c, fs, ph: i * 1.7 + fx });
         }
       }
-      gr.userData = { x: side * (roadW / 2 + 3.4 + dep / 2), z0: Math.floor(i / 2) * 11 + (side > 0 ? 5 : 0) };
-      scene3.add(gr); lots.push(gr);
+      gr.userData = { x: side * (roadW / 2 + 3.4 + dep / 2), z0: Math.floor((i % 32) / 2) * 11 + (side > 0 ? 5 : 0) };
+      (town === 'office' ? officeG : homeG).add(gr); lots.push(gr);
     }
+    scene3.add(officeG, homeG);
     const citySet = new T.Group(); scene3.children.slice(c0).forEach(o => citySet.add(o)); scene3.add(citySet);
     c0 = scene3.children.length;
     const water = new T.Mesh(new T.PlaneGeometry(600, roadL + 200), M(0x3a8fd8));    water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
@@ -1526,7 +1590,6 @@ function init3D() {
       return gr;
     });
     const walls = pool(() => new T.Mesh(box, M(0x0d0f16)));
-    const matSmoke = M(0x8a8f9c, { transparent: true, opacity: 0.8 }), matSmokeF = M(0x6a6f7c);   
     
     const hydrants = pool(() => {
       const gr = new T.Group(), red = M(0xd8262a);
@@ -1640,9 +1703,20 @@ function init3D() {
     const tail = new T.Mesh(new T.ConeGeometry(0.4, 1.8, 8), dMat); tail.rotation.x = -Math.PI / 2 - 0.3; tail.position.set(0, 0.8, -1.9); dragon.add(tail);
     const dragonFlames = mkFlames(dragon, [[0, 3.55, 0.6, 0.8, 0xff6a1a], [-0.35, 3.4, 0.45, 0.6, 0xffc21a], [0.35, 3.4, 0.45, 0.6, 0xff3b1a], [0, 2.3, 2.1, 0.55, 0xffc21a]]);
     dragon.userData = { flash: dMat, base: 0xa4182a, flames: dragonFlames, wings };
-    for (const o of [truck, majin, dragon]) { o.traverse(m => { if (m.isMesh) m.castShadow = true; }); o.visible = false; scene3.add(o); }
-    const bosses = { house: boss, truck, majin, dragon };
-    Object.assign(R3, { bosses, hydrants, matSmoke, matSmokeF });
+    
+    const tower = new T.Group();
+    const twMat = M(0xc9d7e8, { map: winTex });
+    const tw = new T.Mesh(new T.BoxGeometry(2.2, 4.4, 1.8), twMat); tw.position.y = 2.2; tower.add(tw);
+    const twRoof = new T.Mesh(new T.BoxGeometry(2.4, 0.25, 2.0), M(0x8c95a8)); twRoof.position.y = 4.5; tower.add(twRoof);
+    for (const [wx6, wy6] of [[-0.6, 3.6], [0.1, 3.0], [0.6, 3.8], [-0.4, 2.4]]) { const glow = new T.Mesh(new T.BoxGeometry(0.45, 0.4, 0.05), B(0xffa030)); glow.position.set(wx6, wy6, 0.92); tower.add(glow); }
+    const towerFlames = mkFlames(tower, [[0, 5.2, 0, 1.3, 0xff6a1a], [-0.7, 4.9, 0.2, 0.9, 0xff3b1a], [0.7, 4.9, -0.1, 1.0, 0xff7a1a], [-0.6, 4.0, 1.0, 0.5, 0xffc21a], [0.6, 4.2, 1.0, 0.5, 0xffc21a], [0.1, 3.4, 1.0, 0.45, 0xff7a1a]]);
+    tower.userData = { flash: twMat, base: 0xc9d7e8, flames: towerFlames };
+    for (const o of [truck, majin, dragon, tower]) { o.traverse(m => { if (m.isMesh) m.castShadow = true; }); o.visible = false; scene3.add(o); }
+    const bosses = { house: boss, truck, majin, dragon, tower };
+    
+    const embers = pool(() => { const m = new T.Mesh(new T.SphereGeometry(0.35, 10, 8), B(0xffa030)); return m; });
+    const rings = pool(() => { const m = new T.Mesh(new T.RingGeometry(0.75, 1, 24), new T.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.6, depthWrite: false })); m.rotation.x = -Math.PI / 2; return m; });
+    Object.assign(R3, { bosses, hydrants, officeG, homeG, embers, rings });
     Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody, bossFlames,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
@@ -1718,7 +1792,7 @@ function drawFx3(dt) {
   for (const im of [R.puffIM, R.sparkIM]) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
   d.quaternion.set(0, 0, 0, 1);
 }
-const ECOL3 = { grunt: 0xff7a1a, brute: 0xff3b1a, grab: 0xa3122e };   
+const ECOL3 = { grunt: 0xff7a1a, brute: 0xff3b1a, spread: 0x9a3cff, ball: 0xffd21a, purple: 0xb45cff };   
 function lavaCol(e) { const k = clamp(e.hp / e.max, 0, 1), a = [0x3a, 0x2c, 0x28], b = [0xff, 0x4a, 0x10]; return (Math.round(a[0] + (b[0] - a[0]) * k) << 16) | (Math.round(a[1] + (b[1] - a[1]) * k) << 8) | Math.round(a[2] + (b[2] - a[2]) * k); }
 function render3D(g, sx, sy) {
   const R = R3, T = R.T, d = R.dummy, C = CONFIG;
@@ -1736,6 +1810,7 @@ function render3D(g, sx, sy) {
   
   const onBridge = stageOf(g.level).scene === 'bridge';
   R.bridgeSet.visible = onBridge; R.citySet.visible = !onBridge;
+  R.officeG.visible = stageOf(g.level).scene === 'office'; R.homeG.visible = !onBridge && !R.officeG.visible;   
   if (onBridge) {
     for (let i = 0; i < 110; i++) {   
       const z = -118 + ((i >> 1) * 2.4 + (bgY / U3) % 2.4);
@@ -1774,10 +1849,9 @@ function render3D(g, sx, sy) {
       const sink = row.done ? 1 - (g.t - (row.goneT || 0)) / 0.15 : 1;
       if (sink <= 0) continue;
       const taken = false, H = 2.3 * sink;
-      const sm = sl.smoke > 0;   
-      const pn = R.panels.get(); pn.material = sm ? R.matSmoke : taken ? R.matDim : sl.good ? R.matBlue : R.matRed;
+      const pn = R.panels.get(); pn.material = taken ? R.matDim : sl.good ? R.matBlue : R.matRed;
       pn.position.set(cx, H / 2, z); pn.scale.set(Math.max(0.05, w - 0.12), H, 0.08);
-      const fm = sm ? R.matSmokeF : sl.good ? R.matBlueF : R.matRedF;
+      const fm = sl.good ? R.matBlueF : R.matRedF;
       for (const [px, pw] of [[x0 + 0.08, 0.16], [x1 - 0.08, 0.16]]) { const f = R.frames.get(); f.material = taken ? R.matDim : fm; f.position.set(px, H / 2, z); f.scale.set(pw, H, 0.16); }
       const top = R.frames.get(); top.material = taken ? R.matDim : fm; top.position.set(cx, H, z); top.scale.set(w, 0.16, 0.16);
     }
@@ -1821,16 +1895,17 @@ function render3D(g, sx, sy) {
   };
   for (const e of g.enemies) {
     if (e.kind === 'hydrant') { const hy = R.hydrants.get(), k = e.r / U3 * 2.8; hy.position.set(wx(e.x), 0, wz(e.y)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(e.flash > 0 ? 0xffffff : 0xd8262a); continue; }
-    flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'lava' ? lavaCol(e) : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37);
+    flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'lava' ? lavaCol(e) : e.purple && e.kind === 'grunt' ? ECOL3.purple : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37);
   }
   
   for (const { sp, ahead } of AH.squads) for (const lane of sp.lanes) {
     const cols = sp.cols || 6, x0 = laneX(lane) - LANE_W * 0.4;
     for (let rI = 0; rI < sp.rows; rI++) for (let c = 0; c < cols; c++) flame(x0 + (c + 0.5) * (LANE_W * 0.8 / cols), -30 - rI * 19 - ahead, 9 / U3 * 1.1, 0xff7a1a, c + rI);
     if (sp.mix && lane === sp.lanes[0]) {   
-      if (sp.mix.grab) flame(laneX(lane), -44 - sp.rows * 19 - ahead, 12 / U3 * 1.1, ECOL3.grab, 1);
-      if (sp.mix.lava) flame(laneX(lane), -50 - sp.rows * 19 - ahead - (sp.mix.grab ? 30 : 0), 15 / U3 * 1.1, 0xff4a10, 2);
-      if (sp.mix.hydrant && sp.rows * cols >= 6) { const hy = R.hydrants.get(), k = 10 / U3 * 2.8; hy.position.set(wx(laneX(lane)), 0, wz(-30 - Math.floor(sp.rows / 2) * 19 - 4 - ahead)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(0xd8262a); }
+      if (sp.mix.spread) flame(laneX(lane), -44 - sp.rows * 19 - ahead, 13 / U3 * 1.1, ECOL3.spread, 1);
+      if (sp.mix.lava) flame(laneX(lane), -50 - sp.rows * 19 - ahead - (sp.mix.spread ? 30 : 0), 15 / U3 * 1.1, 0xff4a10, 2);
+      for (let k = 0; k < sp.mix.ball; k++) flame(laneX(lane) + (k ? 20 : -20), -10 + k * 30 - ahead, 8 / U3 * 1.1, ECOL3.ball, k);
+      if (sp.mix.hydrant && sp.rows * cols >= 6) { const side = lane === 0 ? 0 : lane === 2 ? 1 : 0, hy = R.hydrants.get(), k = 10 / U3 * 2.8; hy.position.set(wx(side ? CONFIG.ROAD_R - 12 : CONFIG.ROAD_L + 12), 0, wz(40 - ahead)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(0xd8262a); }
     }
   }
   R.hydrants.end();
@@ -1849,6 +1924,13 @@ function render3D(g, sx, sy) {
   }
   R.bulletIM.count = n; R.bulletIM.instanceMatrix.needsUpdate = true;
   
+  for (const em of g.embers || []) {
+    const k = clamp(em.t / em.T, 0, 1), x = em.x0 + (em.tx - em.x0) * k, y = em.y0 + (em.ty - em.y0) * k;
+    const b = R.embers.get(); b.position.set(wx(x), 0.6 + Math.sin(k * Math.PI) * 5, wz(y)); const bs = 1 + 0.3 * Math.sin(g.t * 20); b.scale.set(bs, bs, bs);
+    const rg = R.rings.get(), rs = CONFIG.EMBER_R / U3 * (1.4 - 0.4 * k); rg.position.set(wx(em.tx), 0.05, wz(em.ty)); rg.scale.set(rs, rs, rs); rg.material.opacity = 0.3 + 0.6 * k;
+  }
+  R.embers.end(); R.rings.end();
+  
   const Bs = g.boss || (AH.boss && { x: 180, y: AH.boss.y, r: 46, hp: 1, flash: 0 });   
   const bk = bossKindOf(g.level), show = !!(Bs && Bs.hp > 0);   
   for (const k in R.bosses) R.bosses[k].visible = show && k === bk;
@@ -1865,7 +1947,6 @@ function render3D(g, sx, sy) {
   const now3 = performance.now(), fdt = clamp((now3 - (R.fxT || now3)) / 1000, 0, 0.05); R.fxT = now3;
   if (!paused) {
     for (const e of g.enemies) if (e.kind !== 'hydrant' && Math.random() < fdt * (e.kind === 'lava' ? 2 * e.hp / e.max : 0.6)) fxSparks(e.x, e.y, 1);
-    for (const row of g.rows) if (!row.done) for (const z of row.segs) if (z.s.smoke > 0 && Math.random() < fdt * 4) fxSmoke(z.x0 + (z.x1 - z.x0) * Math.random(), row.y, 1);   
     for (const row of g.rows) for (const z of row.segs) if (z.s.type === 'tire' && z.s.hp > 0 && z.s.skin === 2 && Math.random() < fdt * 3) fxSmoke((z.x0 + z.x1) / 2, row.y, 1);
     if (g.boss && g.boss.hp > 0 && g.boss.y > -20) { if (Math.random() < fdt * 8) fxSparks(g.boss.x + rr2(-40, 40), g.boss.y, 2); if (Math.random() < fdt * 3) fxSmoke(g.boss.x, g.boss.y - 20, 1); }
     drawFx3(fdt);
@@ -1888,12 +1969,10 @@ function drawLabels3D(g) {
       if (row.done) continue;
       const [px, py, k] = P3(cx, row.y, 1.15), [ax] = P3(s.x0, row.y, 1.15), [bx] = P3(s.x1, row.y, 1.15);
       const fs = clamp((bx - ax) * 0.42, 9, 24 * k);
-      if (sl.smoke > 0) { txt('?', px, py, fs * 1.2, '#fff'); continue; }   
       if (sl.type === 'div') { txt('÷2', px, py, fs, '#fff'); continue; }
       txt(gateLabel(sl), px, py, sl.hitT > 0 ? fs * 1.12 : fs, '#fff');
     }
   }
-  for (const e of g.enemies) if (e.kind === 'grab' && e.cap > 0 && e.y > -20) { const [px, py, k] = P3(e.x, e.y, e.r / U3 * 3); txt('+' + e.cap, px, py, 16 * Math.max(0.7, k), '#6fc3ff'); }   
   const Bs = g.boss;
   if (Bs && Bs.hp > 0) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9); txt(bossText(Bs), px, py, 24 * k, '#ffd0a0'); }
   const [px, py] = P3(g.lx, CONFIG.LEADER_Y, 1.6);

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v50';
+const VERSION = 'v51';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -758,11 +758,8 @@ function burst(x, y, col, n) {
 function popText(x, y, s, col, size) { if (texts.length < 60) texts.push({ x, y, s: String(s), col, life: 0.9, size: size || 16 }); }
 function ring(x, y, r, col) { if (rings.length < 40) rings.push({ x, y, r, col, life: 0.3 }); }
 function shake(a) { shakeA = Math.max(shakeA, a); shakeT = 0.18; }
-function coinFx(x, y, v) {
-  const [sx, sy] = SP(x, y);   
-  if (coinsFly.length < 60) coinsFly.push({ x: sx, y: sy, t: 0, vx: rr(-40, 40), vy: rr(-90, -50) });
-  if (texts.length < 50) texts.push({ x: x + 8, y: y - 6, s: '+' + v, col: '#ffd84a', life: 0.6, size: 11 });
-}
+
+function coinFx(x, y, v) {}
 function weaponFx(w) { weaponBanner = { w, life: 1.6 }; hitstop = 0.15; }
 function bigBoom(x, y) {
   for (let k = 0; k < 5; k++) burst(x + rr(-30, 30), y + rr(-30, 30), ['#ffd84a', '#ff7a2f', '#fff'][k % 3], 40);

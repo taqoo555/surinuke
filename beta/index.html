@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v31';
+const VERSION = 'v32';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -48,19 +48,19 @@ const CONFIG = {
   
   RANGE: 300,
   MOVE_RATE: 0.6,                 
-  RED_MIN: 12, RED_MAX: 26,       
+  RED_MIN: 12, RED_MAX: 22,       
   MUL_RATE: 0.15,                 
-  GATE_GROW: 0.15,                
+  GATE_GROW: 0.06,                
 
   
-  LEVEL_GROW: 1.06,               
-  GRUNT_HP: 3, BRUTE_HP: 45,
+  LEVEL_GROW: 1.0,               
+  GRUNT_HP: 2, BRUTE_HP: 45,   
   ENEMY_VY: 20,                   
   
   HOMING: 45, CHASE_RANGE: 150,
 
   
-  TIRE_SHOW: 10, TIRE_BRITTLE: 1.5,
+  TIRE_SHOW: 10, TIRE_BRITTLE: 5,   
   TIRE_BASE: 120, TIRE_HP: 40,    
   WEAPON_POW: 1,                  
   
@@ -72,6 +72,7 @@ const CONFIG = {
   TRACK_GAP: 230,                 
   CHUNKS: 7,                      
   WIDE_RATE: 0.28,                
+  WIDE_RED: 0.7,                  
   WALL_RATE: 0.22,                
   LANE_RATE: 0.4,                 
   MON_BLUE: 1.0, MON_ROWS: 2,     
@@ -124,12 +125,13 @@ function resetMeta() {
   saveMeta();
 }
 
-const SHOP = [
+const SHOP_V24 = [   
   { key: 'lvRate',   label: ['FIRE', 'RATE'],  col: '#6fc3ff', eff: lv => '+' + Math.round(CONFIG.UP_RATE * 100 * lv) + '%' },
   { key: 'lvDmg',    label: ['DAMAGE', ''],    col: '#ff8a5a', eff: lv => '+' + Math.round(CONFIG.UP_DMG * 100 * lv) + '%' },
   { key: 'lvIncome', label: ['INCOME', ''],    col: '#ffd84a', eff: lv => '+' + Math.round(CONFIG.UP_INCOME * 100 * lv) + '%' },
   { key: 'lvArmy',   label: ['+1', 'SOLDIER'], col: '#7dff9b', eff: lv => (CONFIG.START_UNITS + lv) + ' start' },
 ];
+const SHOP = [];
 function shopCost(s, m) { return Math.round(CONFIG.COST_BASE * Math.pow(CONFIG.COST_GROW, m[s.key])); }
 
 
@@ -139,8 +141,8 @@ function newRun(level, m, seed) {
   const g = {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
     t: 0, over: null,
-    N: C.START_UNITS + m.lvArmy,
-    power: 1 + C.UP_DMG * m.lvDmg, rateMul: 1 + C.UP_RATE * m.lvRate, income: 1 + C.UP_INCOME * m.lvIncome,
+    N: C.START_UNITS,   
+    power: 1, rateMul: 1, income: 1,
     wlv: 0, lock: null,
     lx: 180, target: 180, units: [], cR: 10, cDepth: 10, shotAcc: [],
     bullets: [], enemies: [], rows: [], walls: [], boss: null,
@@ -264,9 +266,19 @@ function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, 
 
 
 
+const STAGES = [
+  { name: 'FIRST STEPS',  lane: 0.20, wall: 0.10, wide: 0.15, tire: 0.20, move: 0.3 },
+  { name: 'MOVING GATES', lane: 0.10, wall: 0.05, wide: 0.10, tire: 0.10, move: 1.0 },
+  { name: 'POWER LANE',   lane: 0.75, wall: 0.00, wide: 0.10, tire: 0.20, move: 0.5 },
+  { name: 'BLACK WALLS',  lane: 0.10, wall: 0.60, wide: 0.10, tire: 0.20, move: 0.5 },
+  { name: 'THE HORDE',    lane: 0.15, wall: 0.10, wide: 0.45, tire: 0.10, move: 0.5 },
+  { name: 'TIRE FIELD',   lane: 0.10, wall: 0.10, wide: 0.10, tire: 0.45, move: 0.5 },
+];
+function stageOf(level) { return STAGES[(level - 1) % STAGES.length]; }
+
 function freeRow(g, c) {
   const C = CONFIG, L = C.ROAD_L, R = C.ROAD_R, r = rng();
-  const move = c >= 2 && rng() < C.MOVE_RATE;
+  const move = c >= 2 && rng() < stageOf(g.level).move;
   const cut = (x, sg, w, wa, amp, f, ph) => ({ x, sg, w, wa, amp, f, ph });
   const one = x => cut(x, 0, 0, 0, move ? rr(30, 70) : 0, rr(0.6, 1.3), rr(0, 6.28));
   const win = (parts, w) => {   
@@ -284,22 +296,26 @@ function freeRow(g, c) {
     const x1 = rr(70, 200), x2 = rr(x1 + 50, 300);
     return { parts: shuffle3([slotRed(g), slotRed(g, 1.3), slotBlue(g, 0.9, true)]), cuts: [one(x1), one(x2)] };
   }
-  return win([slotBlue(g, 0.5, true), slotRed(g, 1.5), slotBlue(g, 0.5, true)], rr(60, 110));
+  
+  const side = rng() < 0.5, bl = slotBlue(g, 0.6, true), sr = slotRed(g, 0.5);
+  return win([side ? bl : sr, slotRed(g, 1.5), side ? sr : bl], rr(60, 110));
 }
 function buildTrack(g) {
   const C = CONFIG, G = C.TRACK_GAP, T = [];
   let d = 0, theme = null, left = 0, up = 0, k = 0;
+  const S = stageOf(g.level);
   g.wk = 0;
-  const chunks = C.CHUNKS + Math.min(6, Math.floor((g.level - 1) / 2));
+  
+  const chunks = C.CHUNKS + Math.min(4, Math.floor((g.level - 1) / 3));
   for (let c = 0; c < chunks; c++) {
     
     g.ramp = Math.min(1, 0.4 + 0.15 * c); g.chunk = c;
     
-    const rows = c < 2 ? 1 : 1 + Math.floor(c / 3) + Math.floor((g.level - 1) / 3);
-    const cols = c < 2 ? c + 1 : Math.min(6, 1 + c + Math.floor(g.level / 3));
+    const rows = c < 2 ? 1 : 1 + Math.floor(c / 3) + Math.floor((g.level - 1) / 5);
+    const cols = c < 2 ? c + 1 : Math.min(6, 1 + c + Math.floor(g.level / 4));
     if (left <= 0) {   
       const t = rng();
-      theme = c < 2 ? 'open' : t < C.LANE_RATE ? 'lane' : t < C.LANE_RATE + C.WALL_RATE ? 'wall' : 'open';
+      theme = c < 2 ? 'open' : t < S.lane ? 'lane' : t < S.lane + S.wall ? 'wall' : 'open';
       if (theme === 'wall' && c >= chunks - 1) theme = 'open';
       left = c < 2 ? 2 : theme === 'lane' ? 3 : theme === 'wall' ? 1 : 2;
       up = rng() < 0.5 ? 0 : 2; k = 0;
@@ -336,15 +352,15 @@ function buildTrack(g) {
       continue;
     }
     
-    if (c >= 2 && r < C.WIDE_RATE) {
+    if (c >= 2 && r < S.wide) {
       
-      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows: rows + 1, cols: 5, brute: g.level >= 3 && rng() < 0.4 });
-      const w = slotRed(g, 1.5); w.wide = true;
+      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows, cols: 4, brute: g.level >= 3 && rng() < 0.4 });   
+      const w = slotRed(g, CONFIG.WIDE_RED); w.wide = true;   
       T.push({ dist: d += 170, kind: 'row', lanes: [w, w, w] });
       continue;
     }
     T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: [ri(0, 2)], rows, cols, soft: c < 2 });
-    if (c >= 2 && r < C.WIDE_RATE + 0.3) {
+    if (c >= 2 && r < S.wide + S.tire) {
       
       const open = ri(0, 2), wl = (open + ri(1, 2)) % 3;
       T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : i === wl ? slotWeaponTire(g) : slotTire(g)) });
@@ -665,6 +681,7 @@ window.__sim = function (opt) {
 };
 
 function autoBuy(m) {
+  if (!SHOP.length) return;
   for (;;) {
     const s = SHOP.slice().sort((a, b) => shopCost(a, m) - shopCost(b, m))[0];
     const cost = shopCost(s, m);
@@ -769,9 +786,11 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+let introT = 0;
 let scene = 'menu', game = null, paused = false, bgY = 0, resultInfo = null;
 function startRun() {
   init3D();
+  introT = 2.2;
   game = newRun(meta.level, meta, null);
   parts = []; texts = []; rings = []; coinsFly = []; weaponBanner = null;
   scene = 'play';
@@ -1064,8 +1083,9 @@ function drawMenu() {
   coinPill(10, 24, meta.coins);
   txt('WARS', 180, 96, 44, '#fff36b');   
   txt('LEVEL ' + meta.level, 180, 150, 30, '#fff');
+  txt(stageOf(meta.level).name, 180, 184, 16, '#ffd84a');   
   
-  const n = CONFIG.START_UNITS + meta.lvArmy, t = performance.now() / 1000;
+  const n = CONFIG.START_UNITS, t = performance.now() / 1000;
   for (let k = 0; k < Math.min(n, 30); k++) {
     const x = 180 + ((k % 6) - (Math.min(n, 6) - 1) / 2) * 10, y = 300 + Math.floor(k / 6) * 10;
     ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.28); ctx.fill();
@@ -1148,24 +1168,24 @@ function init3D() {
   try {
     const T = THREE, glc = document.getElementById('gl');
     const renderer = new T.WebGLRenderer({ canvas: glc, antialias: true });
-    renderer.setClearColor(0x1a2238);
+    renderer.setClearColor(0xa9d3f5);   
     const scene3 = new T.Scene();
-    scene3.fog = new T.Fog(0x1a2238, 34, 52);
+    scene3.fog = new T.Fog(0xa9d3f5, 34, 56);
     const cam = new T.PerspectiveCamera(CAM3.fov, CONFIG.W / CONFIG.H, 0.5, 90);
-    scene3.add(new T.HemisphereLight(0xdfe8ff, 0x2a2f44, 0.85));
-    const sun = new T.DirectionalLight(0xffffff, 0.75); sun.position.set(-6, 14, 8); scene3.add(sun);
+    scene3.add(new T.HemisphereLight(0xffffff, 0x4a5578, 0.75));
+    const sun = new T.DirectionalLight(0xffffff, 0.55); sun.position.set(-6, 14, 8); scene3.add(sun);
     const M = (c, o) => new T.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
     const B = (c, o) => new T.MeshBasicMaterial(Object.assign({ color: c }, o || {}));
     
     const rc = document.createElement('canvas'); rc.width = 256; rc.height = 256;
     const rx = rc.getContext('2d');
-    rx.fillStyle = '#2b3350'; rx.fillRect(0, 0, 256, 256);
-    rx.fillStyle = 'rgba(255,255,255,0.22)'; for (const lx of [256 / 3, 512 / 3]) rx.fillRect(lx - 3, 0, 6, 128);
+    rx.fillStyle = '#4e5878'; rx.fillRect(0, 0, 256, 256);
+    rx.fillStyle = 'rgba(255,255,255,0.5)'; for (const lx of [256 / 3, 512 / 3]) rx.fillRect(lx - 3, 0, 6, 128);
     const tex = new T.CanvasTexture(rc); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(1, 20);
     const roadW = (CONFIG.ROAD_R - CONFIG.ROAD_L) / U3, roadL = 80;
     const road = new T.Mesh(new T.PlaneGeometry(roadW, roadL), M(0xffffff, { map: tex }));
     road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -roadL / 2 + 12); scene3.add(road);
-    const water = new T.Mesh(new T.PlaneGeometry(80, roadL), M(0x1d3f6e)); water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
+    const water = new T.Mesh(new T.PlaneGeometry(80, roadL), M(0x3a8fd8)); water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
     for (const sx of [-1, 1]) {   
       const rail = new T.Mesh(new T.BoxGeometry(0.25, 0.25, roadL), M(0x6f7ba8)); rail.position.set(sx * (roadW / 2 + 0.15), 0.9, -roadL / 2 + 12); scene3.add(rail);
       const side = new T.Mesh(new T.BoxGeometry(0.4, 1.2, roadL), M(0x39436a)); side.position.set(sx * (roadW / 2 + 0.2), -0.6, -roadL / 2 + 12); scene3.add(side);
@@ -1355,6 +1375,12 @@ function frame(now) {
     if (in3D) { render3D(g, sx, sy); drawLabels3D(g); }
     else { drawRoad(); drawRows(g, paused ? 0 : dt); drawWalls(g); drawEnemies(g); drawBullets(g); drawCrowd(g); }
     drawFx(paused ? 0 : dt); drawHud(g);
+    if (introT > 0) {   
+      introT -= dt; ctx.globalAlpha = Math.min(1, introT / 0.4);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 230, CONFIG.W, 80);
+      txt('LEVEL ' + g.level, 180, 252, 16, '#fff'); txt(stageOf(g.level).name, 180, 284, 28, '#ffd84a');
+      ctx.globalAlpha = 1;
+    }
     if (paused) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, CONFIG.W, CONFIG.H); txt('PAUSED', 180, 300, 30, '#fff'); txt('tap to resume', 180, 340, 14, '#fff'); }
     if (g.over) {
       g.overT = (g.overT || 0) + dt;

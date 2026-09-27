@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v18';
+const VERSION = 'v19';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -34,7 +34,8 @@ const CONFIG = {
   MOVE_SPEED: 170,                
 
   
-  START_UNITS: 10,                
+  
+  START_UNITS: 1,                 
   UNIT_DPS: 1.0,                  
 
   
@@ -107,7 +108,8 @@ const CONFIG = {
   BOTH_RATE: 0.25,                
   
   
-  GATE_HIT: 1.5,                  
+  GATE_HIT: 0.5,                  
+  SHOT_RATE: 1.6,                 
   DIV_NEED: 30,                   
   
   BARR_HP: 40,                    
@@ -248,7 +250,8 @@ function crowdItems(g) {
 }
 function layoutCrowd(g, dt) {
   const C = CONFIG, items = crowdItems(g);
-  const rowW = C.FORMATION_W;
+  
+  const rowW = formW(g);
   
   const rows = []; let row = [], x = 0, y = C.LEADER_Y, h = 0;
   for (const it of items) {
@@ -268,6 +271,7 @@ function layoutCrowd(g, dt) {
   g.cR = rowW / 2; g.cDepth = rows.length ? y + h - C.LEADER_Y : 8;
 }
 function crowdR(g) { return g.cR; }
+function formW(g) { return clamp(20 + 12 * Math.sqrt(Math.max(1, g.N)), 20, 142); }
 
 
 function setN(g, n, plain) {
@@ -597,8 +601,10 @@ function buildTrack(g) {
     g.ramp = Math.min(1, 0.4 + 0.15 * c); g.chunk = c;
     const two = rng() < 0.2 + 0.04 * c;
     const l1 = ri(0, 2), l2 = (l1 + ri(1, 2)) % 3;
-    T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: two ? [l1, l2] : [l1], rows: (c < 2 ? 1 : C.SQUAD_ROWS) + Math.floor(c / 3) + Math.floor((g.stage - 1) / 2) });
-    const pat = ri(0, 2);
+    
+    T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: two && c >= 2 ? [l1, l2] : [l1], cols: Math.min(6, 1 + c),
+             rows: (c < 2 ? 1 : C.SQUAD_ROWS) + Math.floor(c / 3) + Math.floor((g.stage - 1) / 2) });
+    const pat = c < 2 ? 1 : ri(0, 2);
     const lanes = pat === 0 ? [slotRed(g), slotRed(g), slotTire(g)] : pat === 1 ? [slotBlue(g), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), slotTire(g)];
     T.push({ dist: d += G, kind: 'row', lanes: shuffle3(lanes) });
     if (c % 3 === 2) {
@@ -613,8 +619,9 @@ function buildTrack(g) {
   T.push({ dist: d += G, kind: 'boss' });
   return T;
 }
-function spawnSquad(g, lane, rows) {
-  const C = CONFIG, em = enemyMul(g), cols = 6, x0 = laneX(lane) - LANE_W * 0.4;
+function spawnSquad(g, lane, rows, cols) {
+  cols = cols || 6;
+  const C = CONFIG, em = enemyMul(g), x0 = laneX(lane) - LANE_W * 0.4;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++)
     g.enemies.push({ kind: 'grunt', x: x0 + (c + 0.5) * (LANE_W * 0.8 / cols) + rr(-2, 2), y: -30 - r * 14, r: 7,
       hp: C.GRUNT_HP * em, max: C.GRUNT_HP * em, vy: C.HORDE_VY + rr(-3, 3), bite: 1, burn: 0, burnD: 0,
@@ -626,7 +633,7 @@ function trackFlow(g, dt, scroll) {
   while (g.ti < g.track.length && g.dist >= g.track[g.ti].dist) {
     const sp = g.track[g.ti];
     if (sp.kind === 'row') { g.rows.push({ y: -40, lanes: sp.lanes, done: false }); g.ti++; }
-    else if (sp.kind === 'squad') { for (const l of sp.lanes) spawnSquad(g, l, sp.rows); g.ti++; }
+    else if (sp.kind === 'squad') { for (const l of sp.lanes) spawnSquad(g, l, sp.rows, sp.cols); g.ti++; }
     else if (sp.kind === 'boss') {
       spawnBoss(g); g.ti++;   
     }
@@ -649,7 +656,7 @@ function update(g, dt) {
 
   
   
-  const half = C.FORMATION_W / 2;
+  const half = formW(g) / 2;
   g.target = clamp(g.target, C.ROAD_L + half, C.ROAD_R - half);
   g.lx += clamp(g.target - g.lx, -C.MOVE_SPEED * dt, C.MOVE_SPEED * dt);
 
@@ -689,10 +696,17 @@ function update(g, dt) {
         loseUnits(g, lost, 'lostObst', laneX(i), row.y - 20);
         if (g.over) return;
       }
-      if (sl.type !== 'tire' && sl.type !== 'empty') {
-        applyGate(g, sl);
-        if (!SIM) { popText(g.lx, C.LEADER_Y - 40, gateLabel(sl), sl.good ? '#fff' : '#ff5a6a'); sfx(sl.good ? 'gate' : 'bad'); }
-      }
+      
+      const inL = [0, 0, 0]; let tot = 0;
+      for (const u of g.units) { inL[laneOf(u.x)] += u.w; tot += u.w; }
+      const hits = [0, 1, 2].filter(i => inL[i] > 0 && inL[i] >= tot * 0.2).map(i => row.lanes[i])
+        .filter(x => x.type !== 'tire' && x.type !== 'empty')
+        .sort((a, b) => (a.type === 'mul' || a.type === 'div') - (b.type === 'mul' || b.type === 'div'));
+      hits.forEach((x, k) => {
+        applyGate(g, x);
+        if (!SIM) { popText(g.lx + (k - (hits.length - 1) / 2) * 40, C.LEADER_Y - 40 - k * 16, gateLabel(x), x.good ? '#fff' : '#ff5a6a'); sfx(x.good ? 'gate' : 'bad'); }
+      });
+      if (hits.length >= 2) g.slips++;
     }
   }
   g.rows = g.rows.filter(r => r.y < C.H + 40);
@@ -775,9 +789,22 @@ function update(g, dt) {
   
   const P = C.UNIT_DPS * g.power;
   
-  const streams = [['', normalN(g), 1, [C.RATE_BASE, C.RATE_SQRT], 10], ['SPLIT', g.typ.SPLIT, C.SPLIT_POWER, [0.6, 0.5], 8],
+  
+  let dps = normalN(g) * P * g.rateMul, fired = 0;
+  g.shotAcc = g.shotAcc || [];
+  for (let i = 0; i < g.units.length; i++) {
+    const u = g.units[i];
+    if (u.type) continue;
+    if (g.shotAcc[i] == null) g.shotAcc[i] = rr(0, 1);
+    g.shotAcc[i] -= dt * C.SHOT_RATE * g.rateMul;
+    if (g.shotAcc[i] <= 0) {
+      g.shotAcc[i] += 1;
+      if (g.bullets.length < 600) { g.bullets.push({ x: u.x, y: u.y - 4, vx: 0, vy: -560, dmg: u.w * P / C.SHOT_RATE, r: 1.5 }); fired++; }
+    }
+  }
+  if (!SIM && fired && rng() < 0.3) sfx('shot');
+  const streams = [['', 0, 1, [C.RATE_BASE, C.RATE_SQRT], 10], ['SPLIT', g.typ.SPLIT, C.SPLIT_POWER, [0.6, 0.5], 8],
                    ['FIRE', g.typ.FIRE, C.FIRE_POWER, [5, 2], 18], ['ROCKET', g.typ.ROCKET, C.ROCKET_POWER, [0.45, 0.35], 4]];
-  let dps = 0;
   for (const [t, cnt, pw, rk, cap] of streams) {
     if (cnt <= 0) continue;
     
@@ -940,7 +967,7 @@ function update(g, dt) {
     
     
     
-    if (B.y >= front && Math.abs(B.x - g.lx) < B.r + C.FORMATION_W / 2) {
+    if (B.y >= front && Math.abs(B.x - g.lx) < B.r + formW(g) / 2) {
       if (!B.melee) { B.melee = { tick: 0, chunk: Math.max(1, Math.ceil(B.hp / C.CLASH / 24)) }; if (!SIM) { shake(10); sfx('boss'); } }
       B.melee.tick -= dt;
       while (B.melee.tick <= 0 && B.hp > 0 && g.N > 0) {

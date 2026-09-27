@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v52';
+const VERSION = 'v53';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -76,8 +76,10 @@ const CONFIG = {
   
   
   TRACK_GAP: 250,                 
-  FILLER: 0.6,
+  FILLER: 0.6,                    
   HOUSE_FIRE: false,              
+  GATE_OBST_HP: 0.7,              
+  ARMY_W: 120,                    
   SQUAD_AFTER: 1.0,               
   CHUNKS: 6,                      
   WIDE_RATE: 0.28,                
@@ -187,7 +189,8 @@ function crowdItems(g) {
 }
 
 function formW(g) {
-  const w = clamp(24 + 15 * Math.sqrt(Math.max(1, g.N)), 24, 150);   
+  
+  const w = clamp(24 + 15 * Math.sqrt(Math.max(1, g.N)), 24, CONFIG.ARMY_W);   
   return g.lock != null ? Math.min(w, LANE_W - 12) : w;
 }
 function layoutCrowd(g, dt) {
@@ -310,20 +313,32 @@ function freeRow(g, c) {
     const cx = rr(L + w / 2 + 20, R - w / 2 - 20), amp = move ? rr(40, 90) : 0, wa = move && rng() < 0.4 ? rr(15, 30) : 0, f = rr(0.8, 1.6), ph = rr(0, 6.28);
     return { parts, cuts: [cut(cx, -1, w, wa, amp, f, ph), cut(cx, 1, w, wa, amp, f, ph)] };
   };
-  if (c < 2) return win([slotRed(g), slotBlue(g, 1, true), slotRed(g)], 120);
-  if (r < 0.22) return win([slotRed(g, 1.2), slotBlue(g, 1, true), slotRed(g, 1.2)], rr(50, 100));
-  if (r < 0.34) return win([slotRed(g, 1.2), { type: 'mul', v: 2, good: true, hitT: 0 }, slotRed(g, 1.2)], rr(36, 60));
-  if (r < 0.56) {
-    const pair = rng() < 0.5 ? [slotRed(g, 0.6), slotRed(g, 1.3)] : [slotBlue(g, 0.8, true), slotRed(g, 1.4)];
-    return { parts: rng() < 0.5 ? pair : pair.reverse(), cuts: [one(rr(110, 250))] };
-  }
-  if (r < 0.8) {
-    const x1 = rr(70, 200), x2 = rr(x1 + 50, 300);
-    return { parts: shuffle3([slotRed(g), slotRed(g, 1.3), slotBlue(g, 0.9, true)]), cuts: [one(x1), one(x2)] };
-  }
   
-  const side = rng() < 0.5, bl = slotBlue(g, 0.6, true), sr = slotRed(g, 0.5);
-  return win([side ? bl : sr, slotRed(g, 1.5), side ? sr : bl], rr(60, 110));
+  const blue = k => slotBlue(g, k || 1, true), red = k => slotRed(g, k || 1);
+  const obst = () => { const t = slotTire(g, C.GATE_OBST_HP); t.sign = true; return t; };   
+  const fixed = x => cut(x, 0, 0, 0, 0, 1, 0), L1 = L + LANE_W, L2 = L + LANE_W * 2;
+  const mid = (a2, b2) => (a2 + b2) / 2;
+  if (c < 2) { const f = win([red(), blue(), red()], 120); f.blueX = f.cuts[0].x; return f; }   
+  if (r < 0.15) return { parts: [red(1.2)], cuts: [] };                                            
+  if (r < 0.37) {                                                                                   
+    const x = rr(110, 250), bl = rng() < 0.5;
+    return { parts: bl ? [blue(0.9), red(1.3)] : [red(1.3), blue(0.9)], cuts: [one(x)], blueX: bl ? mid(L, x) : mid(x, R) };
+  }
+  if (r < 0.55) { const f = win([red(1.2), rng() < 0.25 ? { type: 'mul', v: 2, good: true, hitT: 0 } : blue(), red(1.2)], rr(50, 100)); f.blueX = f.cuts[0].x; return f; }   
+  if (r < 0.67) {                                                                                   
+    const w = rr(115, 150), cx = rr(L + w / 2 + 50, R - w / 2 - 50), ph = rr(0, 6.28), amp = move ? rr(15, 35) : 0;
+    const left = rng() < 0.5;
+    return { parts: [blue(0.6), red(1.4), blue(0.6)], cuts: [cut(cx, -1, w, 0, amp, 0.8, ph), cut(cx, 1, w, 0, amp, 0.8, ph)], blueX: left ? mid(L, cx - w / 2) : mid(cx + w / 2, R) };
+  }
+  if (r < 0.82) {                                                                                   
+    const k = ri(0, 2);
+    if (k === 0) return { parts: [obst(), red(1.1)], cuts: [fixed(L1)] };
+    if (k === 2) return { parts: [red(1.1), obst()], cuts: [fixed(L2)] };
+    return { parts: [red(0.8), obst(), red(0.8)], cuts: [fixed(L1), fixed(L2)] };   
+  }
+  const k = rng() < 0.5 ? 0 : 2, bl = rng() < 0.5;                                                  
+  if (k === 0) return { parts: [obst(), bl ? blue() : red(1.2), bl ? red(1.2) : blue()], cuts: [fixed(L1), fixed(L2)], blueX: bl ? mid(L1, L2) : mid(L2, R) };
+  return { parts: [bl ? blue() : red(1.2), bl ? red(1.2) : blue(), obst()], cuts: [fixed(L1), fixed(L2)], blueX: bl ? mid(L, L1) : mid(L1, L2) };
 }
 function buildTrack(g) {
   const C = CONFIG, G = C.TRACK_GAP, T = [];
@@ -388,8 +403,8 @@ function buildTrack(g) {
       T.push({ dist: d += 170, kind: 'row', lanes: [w, w, w] });
       continue;
     }
-    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [ri(0, 2)], rows, cols, soft: c < 2 });
     if (c >= 2 && r < S.wide + S.tire) {
+      T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
       
       const open = ri(0, 2), wl = (open + ri(1, 2)) % 3;
       T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : i === wl ? slotWeaponTire(g) : slotTire(g)) });
@@ -397,7 +412,9 @@ function buildTrack(g) {
       continue;
     }
     
-    T.push({ dist: d += G, kind: 'row', free: freeRow(g, c) });
+    const fr = freeRow(g, c);
+    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2)], rows, cols, soft: c < 2 });
+    T.push({ dist: d += G, kind: 'row', free: fr });
     if (c >= 1 && rng() < C.FILLER) T.push({ dist: d + G * 0.45, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });   
   }
   g.ramp = 1; g.chunk = chunks;
@@ -1360,6 +1377,9 @@ function init3D() {
     const panels = pool(() => new T.Mesh(box, matRed)), frames = pool(() => new T.Mesh(box, matRedF));
     const tireGeo = new T.CylinderGeometry(1, 1, 0.55, 24), tireHole = new T.CylinderGeometry(0.45, 0.45, 0.02, 16);
     
+    const stc = document.createElement('canvas'); stc.width = 64; stc.height = 16; const stx = stc.getContext('2d');
+    for (let k = 0; k < 8; k++) { stx.fillStyle = k % 2 ? '#ffffff' : '#e0302a'; stx.beginPath(); stx.moveTo(k * 8, 16); stx.lineTo(k * 8 + 8, 16); stx.lineTo(k * 8 + 16, 0); stx.lineTo(k * 8 + 8, 0); stx.fill(); }
+    const stripeTex = new T.CanvasTexture(stc);   
     const tires = pool(() => {
       const gr = new T.Group();
       const tire = new T.Group(); for (let k = 0; k < 3; k++) { const m = new T.Mesh(tireGeo, M(0x1c1f28)); m.position.y = 0.3 + k * 0.56; tire.add(m); } const h = new T.Mesh(tireHole, M(0x6b7080)); h.position.y = 1.7; tire.add(h);
@@ -1370,7 +1390,13 @@ function init3D() {
       const cab = new T.Mesh(new T.BoxGeometry(1.0, 0.5, 1.0), M(0x3a3d44)); cab.position.set(-0.1, 1.0, 0); car.add(cab);
       for (const wx2 of [-0.6, 0.6]) for (const wz2 of [-0.55, 0.55]) { const wh = new T.Mesh(new T.CylinderGeometry(0.25, 0.25, 0.2, 10), M(0x111318)); wh.rotation.x = Math.PI / 2; wh.position.set(wx2, 0.25, wz2); car.add(wh); }
       const fl = new T.Mesh(new T.ConeGeometry(0.35, 0.9, 8), B(0xff7a1a)); fl.position.set(0.1, 1.65, 0); car.add(fl);
-      gr.add(tire, tree, car); gr.userData = { tire, tree, car, fl };
+      
+      const sign = new T.Group();
+      for (const lx of [-0.8, 0.8]) { const leg = new T.Mesh(new T.BoxGeometry(0.1, 1.2, 0.1), M(0x9aa0aa)); leg.position.set(lx, 0.6, 0); sign.add(leg); }
+      const board = new T.Mesh(new T.BoxGeometry(2.0, 0.5, 0.08), [M(0xffffff), M(0xffffff), M(0xffffff), M(0xffffff), M(0xffffff, { map: stripeTex }), M(0xffffff, { map: stripeTex })]); board.position.y = 0.95; sign.add(board);
+      const disk = new T.Mesh(new T.CylinderGeometry(0.38, 0.38, 0.06, 20), M(0xe0302a)); disk.rotation.x = Math.PI / 2; disk.position.y = 1.65; sign.add(disk);
+      const bar = new T.Mesh(new T.BoxGeometry(0.46, 0.1, 0.08), M(0xffffff)); bar.position.set(0, 1.65, 0.02); sign.add(bar);
+      gr.add(tire, tree, car, sign); gr.userData = { tire, tree, car, fl, sign };
       gr.traverse(o => { if (o.isMesh) o.castShadow = true; });
       return gr;
     });
@@ -1541,8 +1567,8 @@ function render3D(g, sx, sy) {
       if (sl.type === 'tire') {
         if (sl.hp <= 0) continue;
         const t = R.tires.get(), r = Math.min(w * 0.42, 2.2), u = t.userData, hit = sl.hitT > 0 ? 1.06 : 1;
-        if (sl.skin == null) sl.skin = Math.floor(Math.random() * 3);   
-        u.tire.visible = sl.skin === 0; u.tree.visible = sl.skin === 1; u.car.visible = sl.skin === 2;
+        if (sl.skin == null) sl.skin = sl.sign ? 3 : Math.floor(Math.random() * 3);   
+        u.tire.visible = sl.skin === 0; u.tree.visible = sl.skin === 1; u.car.visible = sl.skin === 2; u.sign.visible = sl.skin === 3;
         u.fl.scale.set(1, 0.8 + 0.3 * Math.abs(Math.sin(g.t * 11 + cx)), 1);
         t.position.set(cx, 0, z); t.scale.set(r * hit, hit, r * hit);
         for (let k = 0; k < 3; k++) u.tire.children[k].material.color.setHex(sl.hitT > 0 ? 0x5a5f70 : 0x1c1f28);

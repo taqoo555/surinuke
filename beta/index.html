@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v49';
+const VERSION = 'v50';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -808,6 +808,7 @@ function sfx(k) {
     case 'fail': tone(150, 0.6, 'triangle', 0.45, 55); break;
     case 'flip': [262, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.1, 'triangle', 0.4), i * 50)); break;
     case 'warn': tone(440, 0.12, 'triangle', 0.3); setTimeout(() => tone(440, 0.12, 'triangle', 0.3), 180); break;
+    case 'coin': tone(880 + Math.random() * 200, 0.04, 'triangle', 0.15); break;   
     case 'buy': tone(440, 0.07, 'triangle', 0.4); setTimeout(() => tone(660, 0.1, 'triangle', 0.4), 60); break;
     case 'no': tone(100, 0.1, 'triangle', 0.3); break;
   }
@@ -1098,10 +1099,10 @@ function drawCoinsFly(dt) {
   for (const c of coinsFly) {
     c.t += dt;
     if (c.t < 0.25) { c.x += c.vx * dt; c.y += c.vy * dt; c.vy += 300 * dt; }
-    else { const k = Math.min(1, dt * 9); c.x += (VB.l + 22 - c.x) * k; c.y += (62 - c.y) * k; }
+    else { const k = Math.min(1, dt * 9), tx = c.tx != null ? c.tx : VB.l + 22, ty = c.ty != null ? c.ty : 62; c.x += (tx - c.x) * k; c.y += (ty - c.y) * k; }
     drawCoin(c.x, c.y, 5);
   }
-  coinsFly = coinsFly.filter(c => c.t < 0.25 || Math.hypot(c.x - VB.l - 22, c.y - 62) > 6);
+  coinsFly = coinsFly.filter(c => c.t < 0.25 || Math.hypot(c.x - (c.tx != null ? c.tx : VB.l + 22), c.y - (c.ty != null ? c.ty : 62)) > 6);
 }
 function drawFx(dt) {
   drawCoinsFly(dt);
@@ -1145,10 +1146,12 @@ function drawIcon(kind, cx, cy, sz) {
     
     for (const dx of [-sz * 0.22, sz * 0.22]) {
       const x = cx + dx, y = cy - sz * 0.05, r = sz * 0.2;
-      ctx.fillStyle = '#1c357a'; rrect(x - r * 0.95, y + r * 0.35, r * 1.9, r * 2.0, r * 0.5); ctx.fill();            
-      ctx.fillStyle = '#2a4f9e'; rrect(x - r * 0.45, y + r * 0.7, r * 0.9, r * 1.1, r * 0.25); ctx.fill();            
+      
+      ctx.fillStyle = '#23408f'; rrect(x - r * 0.95, y + r * 0.35, r * 1.9, r * 2.0, r * 0.55); ctx.fill();           
+      ctx.fillStyle = '#8fb3e0'; rrect(x - r * 0.55, y + r * 0.75, r * 1.1, r * 1.25, r * 0.3); ctx.fill();          
+      ctx.fillStyle = '#b7d0f0'; ctx.fillRect(x - r * 0.35, y + r * 0.85, r * 0.18, r * 1.0);                            
       ctx.fillStyle = '#2a7ae8'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.35, r * 1.2, r * 0.42, 0, 0, 6.28); ctx.fill();   
-      ctx.fillStyle = '#3f9bff'; ctx.beginPath(); ctx.arc(x, y, r * 0.95, 0, 6.28); ctx.fill();                        
+      ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(x, y, r * 0.95, 0, 6.28); ctx.fill();                        
       ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.4, r * 0.3, r * 0.18, -0.5, 0, 6.28); ctx.fill();   
     }
   } else if (kind === 'income') {   
@@ -1206,18 +1209,25 @@ function drawResult() {
   ctx.fillStyle = '#ddd'; ctx.fillRect(292, 206, 2, 26); ctx.fillStyle = '#ff4d5e'; ctx.beginPath(); ctx.moveTo(294, 206); ctx.lineTo(308, 211); ctx.lineTo(294, 216); ctx.fill();
   txt(Math.floor(r.prog * 100) + '%', 180, 252, 16, '#fff');
   
-  r.shown = Math.min(r.coins, (r.shown || 0) + Math.max(1, r.coins / 40));
+  
+  const now = performance.now(), el = (now - (r.t0 || (r.t0 = now))) / 1000, dtR = Math.min(0.05, (now - (r.lastT || now)) / 1000); r.lastT = now;
+  const up = Math.min(1, el / 0.7), mv = clamp((el - 0.9) / 1.2, 0, 1), moved = Math.floor(r.coins * (1 - Math.pow(1 - mv, 2)));
+  const left = Math.floor(r.coins * up) - moved;
+  if (mv > 0 && mv < 1 && Math.random() < 0.7) { coinsFly.push({ x: 140 + rr2(-6, 6), y: 315 + rr2(-6, 6), t: 0.25, vx: 0, vy: 0, tx: VB.l + 22, ty: 24 }); if (Math.random() < 0.3) sfx('coin'); }
+  r.moved = moved;
   ctx.fillStyle = 'rgba(0,0,0,0.45)'; rrect(110, 290, 140, 50, 25); ctx.fill();
   drawCoin(140, 315, 14);
-  txt('+' + Math.floor(r.shown), 200, 316, 26, '#ffd84a');
+  txt('+' + Math.max(0, left), 200, 316, 26, '#ffd84a');
   
   buttons = [];
   const b = PLAY_BTN, play = { x: b.x, y: b.y, w: b.w, h: b.h, fn: () => startRun() };
   ctx.fillStyle = '#ffd84a'; rrect(play.x, play.y, play.w, play.h, 14); ctx.fill();
   txt(r.cleared ? 'NEXT ▶' : 'RETRY', 180, play.y + play.h / 2 + 1, 26, '#1a1f33');
   buttons.push(play);
-  coinPill(VB.l + 10, 24, meta.coins);
+  { const shownBal = meta.coins - (r.coins - (r.moved || 0)), pulse = r.moved > 0 && r.moved < r.coins ? 1 + 0.08 * Math.sin(performance.now() / 40) : 1;
+    ctx.save(); ctx.translate(VB.l + 10, 24); ctx.scale(pulse, pulse); coinPill(0, 0, Math.max(0, shownBal)); ctx.restore(); }   
   drawShop();
+  drawCoinsFly(dtR);
 }
 
 

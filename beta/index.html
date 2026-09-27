@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v61';
+const VERSION = 'v62';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -42,8 +42,8 @@ const CONFIG = {
   SHOT_RATE: 1.6,                 
 
   
-  GATE_PER_SEC: 10,   
-  GATE_POS_PER_SEC: 10,            
+  GATE_PER_SEC: 7,   
+  GATE_POS_PER_SEC: 7,            
   DIV_NEED: 30,                   
   BLUE_MIN: 7, BLUE_MAX: 18,      
   
@@ -54,13 +54,13 @@ const CONFIG = {
   GATE_GROW: 0.25,                
   RED_CAP: 28,                    
   DIV_GATES: false,               
-  RED_GROW: 0,                    
+  RED_GROW: 0.10,                    
   ROW_MAX: 9,                     
-  ROW_EVERY: 2,                      
+  ROW_EVERY: 1,                      
 
   
-  LEVEL_GROW: 1.15,                  
-  GRUNT_HP: 1.5, BRUTE_HP: 45,      
+  LEVEL_GROW: 1.22,                  
+  GRUNT_HP: 3.5, BRUTE_HP: 45,      
   HYD_HP: 4, HYD_RATE: 0.5,       
   HYD_JET: 1.4,                   
   HYD_WAVE: 380, HYD_BAND: 110,   
@@ -82,14 +82,19 @@ const CONFIG = {
   WEAPON_TIRES: false,
   WEAPON_HP: 200, WEAPON_FIRST: 0.5,                
 
-  STAGE1_HP: 0.45, STAGE1_BOSS: 0.2,   
+  STAGE_DIFF: [1.5, 1.4, 0.9, 1.7, 1, 0.8],   
+  EASE: [1, 0.35, 0.65, 0.9],      
+  STAGE1_HP: 0.25, STAGE1_BOSS: 0.1,   
                  
   BIG_BOSS: 1.4,                  
+  INTRO_T: 1.0,                   
+  RAMP0: [0.4, 0.5, 0.7, 0.9],   
+  EARLY_GAP: 0.6,                 
   BOSS_AFTER: 1.7,                
   CUT_T: 1.6,                     
   BOSS_STOP: 250,                 
-  EMBER_EVERY: 1.3, EMBER_MIN: 0.55, EMBER_T: 1.0, EMBER_R: 28, EMBER_FRAC: 0.08,    BOSS_RAGE: 20,   
-  BOSS_HP: 1000, CLASH: 25,         
+  EMBER_EVERY: 1.3, EMBER_MIN: 0.55, EMBER_T: 1.0, EMBER_R: 28, EMBER_FRAC: 0.08, EMBER_MAX: 0.3,    BOSS_RAGE: 20,   
+  BOSS_HP: 1700, CLASH: 25,         
 
   
   
@@ -108,7 +113,7 @@ const CONFIG = {
   GUARD_EARLY: 0.3,               
   GUARD_HP: 0.8,                     
   FINAL_ROWS: 3,                  
-  OPEN_GROW: 0.3,                 
+  OPEN_GROW: 0.6,                 
   SQUAD_AFTER: 1.0,               
   CHUNKS: 6,                      
   WIDE_RATE: 0.28,                
@@ -119,8 +124,8 @@ const CONFIG = {
 
   
   UP_RATE: 0.10, UP_DMG: 0.12, UP_INCOME: 0.15,
-  UP_ARMY: 2,                     
-  COST_BASE: 25, COST_GROW: 1.32,    
+  UP_ARMY: 5,                     
+  COST_BASE: 12, COST_GROW: 1.25,    
 
   VOLUME: 0.35,
 };
@@ -293,7 +298,9 @@ function slotRed(g, big, allowDiv) {
 }
 
 
-function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.chunk) * Math.pow(recPower(g.level) / 10, CONFIG.TIRE_POW) * (m || 1) * (g.level === 1 ? CONFIG.STAGE1_HP : 1)) * CONFIG.TIRE_SHOW;    return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
+
+function easeOf(level) { const e = CONFIG.EASE; return level === 1 ? CONFIG.STAGE1_HP : (level - 1 < e.length ? e[level - 1] : 1) * (level >= 4 ? CONFIG.STAGE_DIFF[(level - 1) % 6] : 1); }   
+function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.chunk) * Math.pow(recPower(g.level) / 10, CONFIG.TIRE_POW) * (m || 1) * easeOf(g.level)) * CONFIG.TIRE_SHOW;    return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
 
 const WEAPONS = [
   { name: 'GUN',     rate: 1.00, dmg: 1.00, color: '#e8f4ff' },
@@ -427,13 +434,16 @@ function buildTrack(g) {
   const og = Math.floor((g.level - 1) * CONFIG.OPEN_GROW);
   for (let c = 0; c < chunks; c++) {
     
-    g.ramp = Math.min(1, 0.4 + 0.05 * (g.level - 1) + 0.15 * c); g.chunk = c;
+    
+    const r0 = C.RAMP0[Math.min(g.level, C.RAMP0.length) - 1];   
+    g.ramp = g.level === 1 ? Math.min(1, 0.4 + 0.15 * c) : Math.min(1, r0 + 0.1 * c); g.chunk = c;
     
     
-    const G = C.TRACK_GAP * rr(0.8, 1.15);
+    const G = C.TRACK_GAP * rr(0.8, 1.15) * (c < 2 && g.level > 1 ? C.EARLY_GAP : 1);   
     
-    const rows = c < 2 ? 1 + og : 1 + Math.floor(c / 3) + Math.min(C.ROW_MAX, Math.floor((g.level - 1) / C.ROW_EVERY));   
-    const cols = c < 2 ? Math.min(6, c + 1 + og) : Math.min(6, 1 + c + Math.floor(g.level / 3));
+    const early = c < 2 && g.level === 1;
+    const rows = early ? 1 + og : 1 + Math.floor(c / 3) + Math.min(C.ROW_MAX, Math.floor((g.level - 1) / C.ROW_EVERY));   
+    const cols = early ? Math.min(6, c + 1 + og) : Math.min(6, 1 + c + Math.floor(g.level / 3));
     if (left <= 0) {   
       const t = rng();
       theme = c < 2 ? 'open' : t < S.lane ? 'lane' : t < S.lane + S.wall ? 'wall' : 'open';
@@ -498,7 +508,8 @@ function buildTrack(g) {
     
     const tut = g.level === 1 && c < 3, strong = false;   
     const sl = fr.guard != null ? (fr.guard + ri(1, 2)) % 3 : fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2);
-    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? C.HARD_ROWS : 0), cols: strong ? Math.max(cols, 5) : cols, brute: strong && g.level >= 3, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
+    
+    T.push({ dist: d += (c === 0 ? 40 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? C.HARD_ROWS : 0), cols: strong ? Math.max(cols, 5) : cols, brute: strong && g.level >= 3, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
     
     if (fr.guard != null) T.push({ dist: d + G - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP * (c < 2 ? C.GUARD_EARLY : 1)) : { type: 'empty' }) });
     T.push({ dist: d += G, kind: 'row', free: fr });
@@ -517,7 +528,7 @@ function buildTrack(g) {
 }
 
 function spawnSquad(g, lane, rows, cols, brute, soft, mix) {
-  const C = CONFIG, em = g.mul * (soft ? 0.5 : 1) * (g.level === 1 ? C.STAGE1_HP : 1), x0 = laneX(lane) - LANE_W * 0.4;   
+  const C = CONFIG, em = g.mul * (soft ? 0.5 : 1) * easeOf(g.level), x0 = laneX(lane) - LANE_W * 0.4;   
   cols = cols || 6;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++)
     g.enemies.push({ kind: 'grunt', lane, x: x0 + (c + 0.5) * (LANE_W * 0.8 / cols) + rr(-2, 2), y: -30 - r * 19, r: 9,
@@ -590,7 +601,7 @@ function bossKindOf(level) {
 }
 function spawnBoss(g) {
   
-  const hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? CONFIG.STAGE1_BOSS : 1) * (g.level % 6 === 0 ? CONFIG.BIG_BOSS : 1);   
+  const hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? CONFIG.STAGE1_BOSS : easeOf(g.level)) * (g.level % 6 === 0 ? CONFIG.BIG_BOSS : 1);   
   g.boss = { x: 180, y: -60, r: 46, hp, max: hp, t: 0, flash: 0 };
   if (!SIM) { sfx('boss'); shake(6); }
 }
@@ -813,8 +824,9 @@ function update(g, dt) {
       em.t += dt;
       if (em.t >= em.T && !em.done) {
         em.done = true;
-        let n = 0; for (const u of g.units) if (Math.hypot(u.x - em.tx, u.y - em.ty) < C.EMBER_R + u.d / 2) n += u.w;
-        n = Math.min(n, Math.ceil(3 + g.N * C.EMBER_FRAC));
+        
+        let n = 0; for (const u of g.units) { const dd = Math.hypot(u.x - em.tx, u.y - em.ty); if (dd < C.EMBER_R + u.d / 2) n += u.w * Math.max(0, 1 - dd / (C.EMBER_R + u.d / 2)); }
+        n = Math.min(Math.round(n), Math.ceil(g.N * C.EMBER_MAX));
         if (!SIM) { if (R3.on) { fxSparks(em.tx, em.ty, 10); fxSmoke(em.tx, em.ty, 3); } else burst(em.tx, em.ty, '#ff9a3a', 16); shake(2); }
         if (n > 0) { loseUnits(g, n, 'boss', em.tx, em.ty - 20); if (g.over) return; }
       }
@@ -1069,7 +1081,8 @@ function startRun() {
   init3D();
   game = newRun(meta.level, meta, null);
   
-  game.cd = CD_LEN; introT = CD_LEN + 0.6; cdLast = 4;
+  
+  game.cd = 0; introT = CONFIG.INTRO_T; cdLast = 0; sfx('go');
   parts = []; texts = []; rings = []; coinsFly = []; weaponBanner = null; flyers = [];
   scene = 'play';
 }
@@ -2108,14 +2121,8 @@ function frame(now) {
     if (g.cutT > 0) drawCutIn(g);
     if (introT > 0) {   
       if (!paused) introT -= dt;
-      const left = introT - 0.6, n = Math.ceil(left / (CD_LEN / 3));   
-      if (n !== cdLast) { cdLast = n; sfx(n > 0 ? 'tick' : 'go'); }
-      const ph = n > 0 ? 1 - (left - (n - 1) * CD_LEN / 3) / (CD_LEN / 3) : 1 - introT / 0.6;   
-      ctx.globalAlpha = n > 0 ? 1 : Math.min(1, introT / 0.3);
-      txt('STAGE ' + g.level, 180, 214, 26, '#fff');   
-      const big = n > 0 ? String(n) : 'GO!', k = 1 + 0.6 * Math.pow(1 - Math.min(1, ph * 3), 2);   
-      ctx.globalAlpha *= n > 0 ? Math.min(1, (1 - ph) * 4) : 1;
-      txt(big, 180, 290, (n > 0 ? 84 : 72) * k, n > 0 ? '#fff' : '#fff36b');
+      ctx.globalAlpha = Math.min(1, introT / 0.3);
+      txt('STAGE ' + g.level, 180, 230, 30, '#fff');   
       ctx.globalAlpha = 1;
     }
     if (paused) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t); txt('PAUSED', 180, 300, 30, '#fff'); txt('tap to resume', 180, 340, 14, '#fff'); }

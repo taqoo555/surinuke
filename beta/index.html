@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v26';
+const VERSION = 'v27';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -54,7 +54,7 @@ const CONFIG = {
   HOMING: 45, CHASE_RANGE: 150,
 
   
-  TIRE_PER: 16,
+  TIRE_SHOW: 10, TIRE_BRITTLE: 1.5,
   TIRE_BASE: 120, TIRE_HP: 40,    
   WEAPON_POW: 1,                  
   WEAPON_HP: 200, WEAPON_FIRST: 0.5,                
@@ -214,7 +214,7 @@ function slotRed(g, big) {
   return { type: 'add', v: -k, good: false, hitT: 0 };
 }
 
-function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.chunk) * g.mul * (m || 1)); return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
+function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.chunk) * g.mul * (m || 1)) * CONFIG.TIRE_SHOW; return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
 
 const WEAPONS = [
   { name: 'GUN',     rate: 1.00, dmg: 1.00, color: '#e8f4ff' },
@@ -229,11 +229,11 @@ function weapon(g) {
 }
 
 function slotWeaponTire(g) {
-  const hp = Math.round(CONFIG.WEAPON_HP * g.mul * (g.wk === 0 ? CONFIG.WEAPON_FIRST : 1 + 0.5 * (g.wk - 1)));   
+  const hp = Math.round(CONFIG.WEAPON_HP * g.mul * (g.wk === 0 ? CONFIG.WEAPON_FIRST : 1 + 0.5 * (g.wk - 1))) * CONFIG.TIRE_SHOW;   
   g.wk++;
   return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0, weapon: true };
 }
-function tireCost(t) { return Math.max(0, Math.ceil(t.hp / CONFIG.TIRE_PER)); }
+const tireDmg = d => d * CONFIG.TIRE_SHOW * CONFIG.TIRE_BRITTLE;   
 function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 
@@ -411,9 +411,9 @@ function update(g, dt) {
     for (let i = 0; i < 3; i++) {
       const t = row.lanes[i];
       if (t.type !== 'tire' || t.hp <= 0 || inL[i] <= 0) continue;
-      const cost = tireCost(t), lost = Math.min(inL[i], cost, g.N);
-      t.hp = lost >= cost ? 0 : t.hp - lost * C.TIRE_PER;
-      if (!SIM) { burst(laneX(i), row.y, '#555', 24); shake(8); }
+      const lost = Math.min(inL[i], g.N);
+      t.hp = 0; t.crashed = true;
+      if (!SIM) { burst(laneX(i), row.y, '#555', 40); burst(laneX(i), row.y, '#6fc3ff', 20); shake(10); popText(laneX(i), row.y - 50, 'CRASH!', '#ff5a6a', 22); }
       loseUnits(g, lost, 'tire', laneX(i), row.y - 30);
       if (g.over) return;
     }
@@ -462,7 +462,7 @@ function update(g, dt) {
       if (sl.type === 'empty' || (sl.type === 'tire' && sl.hp <= 0)) break;
       b.dead = true;
       if (sl.type === 'tire') {
-        sl.hp -= b.dmg; sl.hitT = 0.06; sl.coinAcc += b.dmg;
+        sl.hp -= tireDmg(b.dmg); sl.hitT = 0.06; sl.coinAcc += tireDmg(b.dmg);
         while (sl.coinAcc >= sl.max / 8) { sl.coinAcc -= sl.max / 8; addCoins(g, 1 + Math.floor(g.level / 2), b.x, row.y - 10); }
         if (sl.hp <= 0) {
           if (sl.weapon && !sl.got) {   
@@ -557,8 +557,8 @@ function projVal(g, sl, t, shots, dps) {
   if (sl.type === 'mul') return g.N * (sl.v - 1);
   if (sl.type === 'div') return sl.charge + grow >= sl.need ? g.N : -g.N / 2;
   if (sl.type === 'add') return sl.v + grow;
-  const rem = sl.hp - dps * t * 0.6;   
-  return rem <= 0 ? (sl.weapon ? 20 + g.N * 0.3 : 3) : -Math.ceil(rem / C.TIRE_PER);
+  const rem = sl.hp - tireDmg(dps) * t * 0.6;   
+  return rem <= 0 ? (sl.weapon ? 20 + g.N * 0.3 : 3) : -g.N;
 }
 function botStep(g, bot, st) {
   const C = CONFIG;
@@ -851,7 +851,7 @@ function drawTire(g, sl, cx, y) {
     ctx.strokeStyle = '#3a3f4e'; ctx.lineWidth = 2; ctx.stroke();
   }
   ctx.fillStyle = '#6b7080'; ctx.beginPath(); ctx.ellipse(cx, y - 6, rw * 0.45, 4, 0, 0, 6.28); ctx.fill();
-  txt(String(tireCost(sl)), cx, y + 24, sl.hitT > 0 ? 20 : 18, '#ff9a5a');   
+  txt(String(Math.ceil(sl.hp)), cx, y + 24, sl.hitT > 0 ? 20 : 18, '#ff9a5a');   
   if (sl.weapon && g.wlv < WEAPONS.length - 1) {   
     
     const nx = WEAPONS[Math.min(WEAPONS.length - 1, g.wlv + 1)], gy = y - 30 + Math.sin(performance.now() / 200) * 2;
@@ -1040,7 +1040,7 @@ function drawMenu() {
 const LOSS_ROWS = [
   ['gate',  'RED GATES', 'Shoot red gates until they turn blue'],
   ['enemy', 'ENEMIES',   'Dodge into the thinner lane and shoot first'],
-  ['tire',  'TIRES',     'Break tires before you reach them — or pick another lane'],
+  ['tire',  'TIRES',     'Tires crush everyone who runs into them — break them or switch lanes'],
   ['boss',  'BOSS',      'Grow the army bigger than the boss number'],
 ];
 function drawResult() {

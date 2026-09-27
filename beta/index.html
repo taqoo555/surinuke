@@ -23,14 +23,15 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v14';
+const VERSION = 'v15';
 
 const CONFIG = {
   W: 360, H: 640,                 
   ROAD_L: 16, ROAD_R: 344,        
   LEADER_Y: 500,                  
   SCROLL: 115,                    
-  KEY_SPEED: 280,                 
+  KEY_SPEED: 280,
+  MOVE_SPEED: 170,                
 
   
   START_UNITS: 10,                
@@ -633,8 +634,10 @@ function update(g, dt) {
   const scroll = g.boss ? C.SCROLL * C.BOSS_SCROLL : C.SCROLL;   
 
   
-  g.target = clamp(g.target, C.ROAD_L + 6, C.ROAD_R - 6);
-  g.lx += (g.target - g.lx) * Math.min(1, dt * 18);
+  
+  const half = C.FORMATION_W / 2;
+  g.target = clamp(g.target, C.ROAD_L + half, C.ROAD_R - half);
+  g.lx += clamp(g.target - g.lx, -C.MOVE_SPEED * dt, C.MOVE_SPEED * dt);
 
   layoutCrowd(g, dt);
   const R = crowdR(g), cy = C.LEADER_Y + g.cDepth / 2;   

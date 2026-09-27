@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v35';
+const VERSION = 'v36';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -59,6 +59,7 @@ const CONFIG = {
   ENEMY_VY: 10,                   
   
   HOMING: 45, CHASE_RANGE: 150,
+  SURGE_RANGE: 230, SURGE: 60, SURGE_HOME: 1.5,   
 
   
   TIRE_SHOW: 10, TIRE_BRITTLE: 5,   
@@ -557,9 +558,13 @@ function update(g, dt) {
   
   const R = g.cR;
   for (const e of g.enemies) {
-    e.y += (scroll + e.vy) * dt;
-    if (e.y > C.LEADER_Y - C.CHASE_RANGE && e.y < C.LEADER_Y + g.cDepth)
-      e.x += clamp((g.lx - e.x) * 1.5, -C.HOMING, C.HOMING) * (e.hk || 1) * dt;
+    
+    const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth;
+    e.y += (scroll + e.vy + (near ? C.SURGE : 0)) * dt;
+    if (near) {
+      e.x += clamp((g.lx - e.x) * 1.5, -C.HOMING, C.HOMING) * (e.hk || 1) * C.SURGE_HOME * dt;
+      e.x += Math.sin(g.t * 9 + (e.ph || 0) * 3) * 38 * dt;   
+    }
     if (e.wob) e.x += Math.cos(g.t * e.wf + e.ph) * e.wob * e.wf * dt;
     e.x = clamp(e.x, C.ROAD_L + 6, C.ROAD_R - 6);
     if (g.walls.some(w => e.y <= w.y && e.y >= w.y - w.len))
@@ -1188,7 +1193,7 @@ function init3D() {
     scene3.fog = new T.Fog(0xa9d3f5, 60, 110);   
     const cam = new T.PerspectiveCamera(CAM3.fov, CONFIG.W / CONFIG.H, 0.5, 160);
     scene3.add(new T.HemisphereLight(0xffffff, 0x4a5578, 0.75));
-    const sun = new T.DirectionalLight(0xffffff, 0.55); sun.position.set(-6, 14, 8); scene3.add(sun);
+    const sun = new T.DirectionalLight(0xffffff, 0.6); sun.position.set(-8, 20, 6); scene3.add(sun);
     const M = (c, o) => new T.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
     const B = (c, o) => new T.MeshBasicMaterial(Object.assign({ color: c }, o || {}));
     
@@ -1226,18 +1231,31 @@ function init3D() {
       for (const wx2 of [-0.6, 0.6]) for (const wz2 of [-0.55, 0.55]) { const wh = new T.Mesh(new T.CylinderGeometry(0.25, 0.25, 0.2, 10), M(0x111318)); wh.rotation.x = Math.PI / 2; wh.position.set(wx2, 0.25, wz2); car.add(wh); }
       const fl = new T.Mesh(new T.ConeGeometry(0.35, 0.9, 8), B(0xff7a1a)); fl.position.set(0.1, 1.65, 0); car.add(fl);
       gr.add(tire, tree, car); gr.userData = { tire, tree, car, fl };
+      gr.traverse(o => { if (o.isMesh) o.castShadow = true; });
       return gr;
     });
     const walls = pool(() => new T.Mesh(box, M(0x0d0f16)));
     
     
-    const unitBody = new T.InstancedMesh(new T.CylinderGeometry(0.22, 0.28, 0.55, 8), M(0x1f3b73), 260);
-    const unitHead = new T.InstancedMesh(new T.SphereGeometry(0.21, 10, 8), M(0xffd23f), 260);
+    const unitBody = new T.InstancedMesh(new T.CylinderGeometry(0.22, 0.28, 0.55, 8), M(0x2e6fe0), 260);
+    
+    const unitHead = new T.InstancedMesh(new T.SphereGeometry(0.21, 10, 8), M(0x9cc9ff), 260);
     const enemyBody = new T.InstancedMesh(new T.ConeGeometry(0.95, 2.3, 10), B(0xffffff), 500);    
     const enemyHorn = new T.InstancedMesh(new T.ConeGeometry(0.55, 1.5, 8), B(0xffe14a), 500);     
     const enemyEye = new T.InstancedMesh(new T.SphereGeometry(0.16, 6, 5), B(0x2a0e05), 1000);
-    const bulletIM = new T.InstancedMesh(new T.SphereGeometry(0.13, 8, 6), B(0xbfefff, { transparent: true, opacity: 0.85 }), 700);   
-    for (const im of [unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM]) { im.frustumCulled = false; scene3.add(im); }
+    const bulletIM = new T.InstancedMesh(new T.SphereGeometry(0.13, 8, 6), B(0xbfefff, { transparent: true, opacity: 0.85 }), 700);      
+    
+    const gc = document.createElement('canvas'); gc.width = gc.height = 64; const gx = gc.getContext('2d'), gr = gx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,170,60,0.9)'); gr.addColorStop(1, 'rgba(255,120,30,0)'); gx.fillStyle = gr; gx.fillRect(0, 0, 64, 64);
+    const glowIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: new T.CanvasTexture(gc), transparent: true, depthWrite: false, blending: T.AdditiveBlending }), 500);
+    for (const im of [unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM]) { im.frustumCulled = false; scene3.add(im); }
+    
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+    sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+    Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 22, bottom: -22, near: 1, far: 60 }); sun.shadow.camera.updateProjectionMatrix();
+    sun.target.position.set(0, 0, -8); scene3.add(sun.target);
+    road.receiveShadow = true;
+    for (const im of [unitBody, unitHead, enemyBody]) im.castShadow = true;
     
     const boss = new T.Group();
     const bossBody = new T.Mesh(new T.SphereGeometry(1, 20, 16), B(0xff5a1a)); boss.add(bossBody);   
@@ -1249,7 +1267,7 @@ function init3D() {
     }
     for (const ex of [-0.35, 0.35]) { const e = new T.Mesh(new T.BoxGeometry(0.28, 0.2, 0.1), B(0x2a0e05)); e.position.set(ex, 0.25, 0.95); boss.add(e); }
     boss.visible = false; scene3.add(boss);
-    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, boss, bossBody,
+    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, boss, bossBody,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
   } catch (e) { R3.on = false; R3.err = String(e); }
@@ -1287,7 +1305,9 @@ function ahead3D(g) {
 }
 function render3D(g, sx, sy) {
   const R = R3, T = R.T, d = R.dummy, C = CONFIG;
-  R.cam.position.set(sx * 0.05, CAM3.y + sy * 0.05, CAM3.z); R.cam.lookAt(sx * 0.05, 0, CAM3.look);
+  
+  R.camX = (R.camX || 0) + (wx(g.lx) * 0.3 - (R.camX || 0)) * 0.08;
+  R.cam.position.set(R.camX + sx * 0.05, CAM3.y + sy * 0.05, CAM3.z); R.cam.lookAt(R.camX * 0.6 + sx * 0.05, 0, CAM3.look);
   R.tex.offset.y = (bgY / U3) / 4;   
   for (let i = 0; i < 110; i++) {   
     const z = -118 + ((i >> 1) * 2.4 + (bgY / U3) % 2.4);
@@ -1344,12 +1364,13 @@ function render3D(g, sx, sy) {
   n = 0; let h = 0;
   const flame = (x, y, r, col, ph) => {
     if (n >= 500) return;
-    const fl = 1 + 0.18 * Math.sin(g.t * 12 + ph), sw = Math.sin(g.t * 7 + ph) * 0.12;
+    const fl = 1 + 0.16 * Math.sin(g.t * 13 + ph) + 0.1 * Math.sin(g.t * 23 + ph * 1.7), sw = Math.sin(g.t * 7 + ph) * 0.14 + Math.sin(g.t * 17 + ph) * 0.06;   
     d.rotation.set(0, 0, sw); d.position.set(wx(x), r * 1.1 * fl, wz(y)); d.scale.set(r, r * fl, r); d.updateMatrix(); R.enemyBody.setMatrixAt(n, d.matrix);
     R.col.setHex(col); R.enemyBody.setColorAt(n, R.col);
     d.position.set(wx(x), r * 0.8 * fl, wz(y) + r * 0.15); d.updateMatrix(); R.enemyHorn.setMatrixAt(n, d.matrix);
     d.rotation.set(0, 0, 0); d.scale.set(r, r, r);
     for (const sgn of [-1, 1]) { if (h >= 1000) break; d.position.set(wx(x) + sgn * r * 0.3, r * 0.75, wz(y) + r * 0.7); d.updateMatrix(); R.enemyEye.setMatrixAt(h++, d.matrix); }
+    d.rotation.set(-Math.PI / 2, 0, 0); d.position.set(wx(x), 0.03, wz(y)); d.scale.set(r * 2.6 * fl, r * 2.6 * fl, 1); d.updateMatrix(); R.glowIM.setMatrixAt(n, d.matrix);   
     n++;
   };
   for (const e of g.enemies) flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'brute' ? 0xff3b1a : 0xff7a1a, e.x * 0.37);
@@ -1358,17 +1379,18 @@ function render3D(g, sx, sy) {
     const cols = sp.cols || 6, x0 = laneX(lane) - LANE_W * 0.4;
     for (let rI = 0; rI < sp.rows; rI++) for (let c = 0; c < cols; c++) flame(x0 + (c + 0.5) * (LANE_W * 0.8 / cols), -30 - rI * 19 - ahead, 9 / U3 * 1.1, 0xff7a1a, c + rI);
   }
-  R.enemyBody.count = R.enemyHorn.count = n; R.enemyEye.count = h;
-  R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = R.enemyEye.instanceMatrix.needsUpdate = true;
+  R.enemyBody.count = R.enemyHorn.count = R.glowIM.count = n; R.enemyEye.count = h;
+  R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = R.enemyEye.instanceMatrix.needsUpdate = R.glowIM.instanceMatrix.needsUpdate = true;
   if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
   
   n = 0;
-  const bs = Math.min(3, 1 + (g.power - 1) * 0.9);
+  
+  const bs = Math.min(2, 1 + (g.power - 1) * 0.45) * 0.7;
   R.bulletIM.material.color.setHSL(0.56, 1, Math.max(0.5, 0.82 - (g.power - 1) * 0.1));
   for (const b of g.bullets) {
     if (n >= 700) break;
-    const k = Math.min(3.5, bs * (1 + Math.log10(b.w || 1) * 0.6));
-    d.rotation.set(0, 0, 0); d.position.set(wx(b.x), 0.55, wz(b.y)); d.scale.set(k, k, k * 2.2); d.updateMatrix(); R.bulletIM.setMatrixAt(n++, d.matrix);
+    const k = Math.min(2.2, bs * (1 + Math.log10(b.w || 1) * 0.4));
+    d.rotation.set(0, 0, 0); d.position.set(wx(b.x), 0.55, wz(b.y)); d.scale.set(k, k, k * 1.8); d.updateMatrix(); R.bulletIM.setMatrixAt(n++, d.matrix);
   }
   R.bulletIM.count = n; R.bulletIM.instanceMatrix.needsUpdate = true;
   
@@ -1410,7 +1432,7 @@ function drawLabels3D(g) {
 
 let last = performance.now();
 function frame(now) {
-  let dt = Math.min(0.05, (now - last) / 1000); last = now;
+  let dt = clamp((now - last) / 1000, 0, 0.05); last = now;   
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const in3D = R3.on && scene === 'play';
   document.getElementById('gl').style.display = in3D ? 'block' : 'none';

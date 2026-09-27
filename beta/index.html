@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v41';
+const VERSION = 'v42';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -54,7 +54,7 @@ const CONFIG = {
   ROW_EVERY: 1,                      
 
   
-  LEVEL_GROW: 1.15,               
+  LEVEL_GROW: 1.10,               
   GRUNT_HP: 2, BRUTE_HP: 45,   
   ENEMY_VY: 10,                   
   
@@ -74,7 +74,10 @@ const CONFIG = {
   BOSS_HP: 1000, CLASH: 25,       
 
   
-  TRACK_GAP: 300,                 
+  
+  TRACK_GAP: 250,                 
+  FILLER: 0.6,
+  HOUSE_FIRE: false,              
   SQUAD_AFTER: 1.0,               
   CHUNKS: 6,                      
   WIDE_RATE: 0.28,                
@@ -329,7 +332,7 @@ function buildTrack(g) {
     g.ramp = Math.min(1, 0.4 + 0.15 * c); g.chunk = c;
     
     
-    const G = C.TRACK_GAP * rr(0.75, 1.35);
+    const G = C.TRACK_GAP * rr(0.8, 1.15);
     
     const rows = c < 2 ? 1 : 1 + Math.floor(c / 3) + Math.min(6, Math.floor((g.level - 1) / C.ROW_EVERY));
     const cols = c < 2 ? c + 1 : Math.min(6, 1 + c + Math.floor(g.level / 3));
@@ -389,6 +392,7 @@ function buildTrack(g) {
     }
     
     T.push({ dist: d += G, kind: 'row', free: freeRow(g, c) });
+    if (c >= 1 && rng() < C.FILLER) T.push({ dist: d + G * 0.45, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });   
   }
   g.ramp = 1; g.chunk = chunks;
   
@@ -536,7 +540,7 @@ function update(g, dt) {
     for (const e of targets) {
       if (e.hp <= 0) continue;
       if (Math.abs(b.x - e.x) > e.r + 3 || Math.abs(b.y - e.y) > e.r + 6) continue;
-      hurt(g, e, b.dmg); b.dead = true; break;
+      hurt(g, e, b.dmg); b.dead = true; if (!SIM && Math.random() < 0.25) fxSteam(e.x, e.y, 1); break;
     }
     
     if (!b.dead) for (const row of g.rows) {
@@ -548,6 +552,7 @@ function update(g, dt) {
       b.dead = true;
       if (sl.type === 'tire') {
         if (sl.t0 == null) sl.t0 = g.t;   
+        if (!SIM && Math.random() < 0.3) fxSplash(b.x, row.y, 2);
         sl.hp -= tireDmg(b.dmg); sl.hitT = 0.06; sl.coinAcc += tireDmg(b.dmg);
         while (sl.coinAcc >= sl.max / 8) { sl.coinAcc -= sl.max / 8; addCoins(g, 1 + Math.floor(g.level / 2), b.x, row.y - 10); }
         if (sl.hp <= 0) {
@@ -636,7 +641,8 @@ function kill(g, e, contact) {
   if (e.dead) return;
   e.dead = true; e.hp = 0;
   if (!contact) { g.kills++; addCoins(g, (e.kind === 'brute' ? 6 : 1) * (1 + Math.floor(g.level / 2)), e.x, e.y); }
-  if (!SIM) { burst(e.x, e.y, '#ffffff', e.kind === 'brute' ? 14 : 5); burst(e.x, e.y, e.kind === 'brute' ? '#ff7a1a' : '#ffb347', e.kind === 'brute' ? 16 : 5);   
+  if (!SIM && R3.on) { fxSteam(e.x, e.y, e.kind === 'brute' ? 8 : 4); fxSparks(e.x, e.y, e.kind === 'brute' ? 12 : 5); sfx('kill'); if (e.kind === 'brute') shake(4); }   
+  else if (!SIM) { burst(e.x, e.y, '#ffffff', e.kind === 'brute' ? 14 : 5); burst(e.x, e.y, e.kind === 'brute' ? '#ff7a1a' : '#ffb347', e.kind === 'brute' ? 16 : 5);   
    sfx('kill'); if (e.kind === 'brute') shake(4); }
 }
 
@@ -1265,7 +1271,7 @@ function init3D() {
         }
         const bench = new T.Mesh(new T.BoxGeometry(0.6, 0.5, 2), M(0x9a6b3e)); bench.position.set(side * -3, 0.25, -1); gr.add(bench);
       }
-      if (kind !== 'park' && pick(i, 5, [0, 0, 1]) === 1) {   
+      if (CONFIG.HOUSE_FIRE && kind !== 'park' && pick(i, 5, [0, 0, 1]) === 1) {   
         for (const [fx, fz, fs] of [[0, 0, 1.4], [-1.2, 1, 0.9], [1.1, -1.2, 1]]) {
           const f = new T.Mesh(new T.ConeGeometry(0.7 * fs, 2.2 * fs, 8), fireMat); f.position.set(fx, top + 1.1 * fs, fz); gr.add(f);
           const c = new T.Mesh(new T.ConeGeometry(0.4 * fs, 1.4 * fs, 8), fireCore); c.position.set(fx, top + 0.7 * fs, fz + 0.05); gr.add(c);
@@ -1355,6 +1361,15 @@ function init3D() {
     const gc = document.createElement('canvas'); gc.width = gc.height = 64; const gx = gc.getContext('2d'), gr = gx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gr.addColorStop(0, 'rgba(255,170,60,0.9)'); gr.addColorStop(1, 'rgba(255,120,30,0)'); gx.fillStyle = gr; gx.fillRect(0, 0, 64, 64);
     const glowIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: new T.CanvasTexture(gc), transparent: true, depthWrite: false, blending: T.AdditiveBlending }), 500);
+    
+    const sc = document.createElement('canvas'); sc.width = sc.height = 64; const sx3 = sc.getContext('2d'), sg = sx3.createRadialGradient(32, 32, 0, 32, 32, 32);
+    sg.addColorStop(0, 'rgba(255,255,255,1)'); sg.addColorStop(0.45, 'rgba(255,255,255,0.55)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); sx3.fillStyle = sg; sx3.fillRect(0, 0, 64, 64);
+    const softTex = new T.CanvasTexture(sc);
+    const puffIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, transparent: true, depthWrite: false, opacity: 0.7 }), 400);
+    const sparkIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, transparent: true, depthWrite: false, blending: T.AdditiveBlending }), 400);
+    const haloIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xff7a2a, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }), 500);
+    for (const im of [puffIM, sparkIM, haloIM]) { im.frustumCulled = false; im.renderOrder = 5; scene3.add(im); }
+    puffIM.setColorAt(0, new T.Color(0xffffff)); sparkIM.setColorAt(0, new T.Color(0xffb030));
     for (const im of [unitBody, unitHead, unitBrim, unitStripe, unitTank, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM]) { im.frustumCulled = false; scene3.add(im); }
     enemyBody.setColorAt(0, new T.Color(0xff7a1a));   
     
@@ -1375,7 +1390,7 @@ function init3D() {
     }
     for (const ex of [-0.35, 0.35]) { const e = new T.Mesh(new T.BoxGeometry(0.28, 0.2, 0.1), B(0x2a0e05)); e.position.set(ex, 0.25, 0.95); boss.add(e); }
     boss.visible = false; scene3.add(boss);
-    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, boss, bossBody,
+    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
   } catch (e) { R3.on = false; R3.err = String(e); }
@@ -1425,6 +1440,30 @@ function idleGame() {
     layoutCrowd(R3.idle, 1);
   }
   return R3.idle;
+}
+
+let fx3 = [];
+function fxAdd(o) { if (fx3.length < 380) fx3.push(o); }
+function fxSteam(x, y, n) { for (let i = 0; i < n; i++) fxAdd({ x: x + rr2(-8, 8), y: y + rr2(-6, 6), h: rr2(0.6, 1.4), vx: rr2(-15, 15), vy: rr2(-20, 5), vh: rr2(1.2, 2.6), g: 0, life: 0, max: rr2(0.6, 1.0), s0: 0.5, s1: rr2(1.6, 2.4), col: 0xffffff, add: false }); }
+function fxSmoke(x, y, n) { for (let i = 0; i < n; i++) fxAdd({ x: x + rr2(-10, 10), y: y + rr2(-6, 6), h: rr2(1.2, 2.2), vx: rr2(-8, 8), vy: rr2(-15, 0), vh: rr2(1.0, 1.8), g: 0, life: 0, max: rr2(1.2, 1.8), s0: 0.8, s1: rr2(2.8, 3.8), col: 0x75757c, add: false }); }
+function fxSparks(x, y, n) { for (let i = 0; i < n; i++) fxAdd({ x: x + rr2(-6, 6), y, h: rr2(0.4, 1.2), vx: rr2(-70, 70), vy: rr2(-70, 30), vh: rr2(3, 6.5), g: 6, life: 0, max: rr2(0.4, 0.8), s0: rr2(0.25, 0.4), s1: 0.05, col: Math.random() < 0.5 ? 0xffb030 : 0xff6a1a, add: true }); }
+function fxSplash(x, y, n) { for (let i = 0; i < n; i++) fxAdd({ x, y: y + rr2(-4, 4), h: rr2(0.4, 1.2), vx: rr2(-60, 60), vy: rr2(-40, 40), vh: rr2(2, 4.5), g: 9, life: 0, max: rr2(0.3, 0.55), s0: rr2(0.18, 0.3), s1: 0.08, col: 0x9fdcff, add: true }); }
+function rr2(a, b) { return a + (b - a) * Math.random(); }   
+function drawFx3(dt) {
+  const R = R3, d = R.dummy;
+  let np = 0, ns = 0;
+  for (const p of fx3) {
+    p.life += dt;
+    p.x += p.vx * dt; p.y += (p.vy + CONFIG.SCROLL) * dt; p.h = Math.max(0.05, p.h + p.vh * dt); p.vh -= p.g * dt;
+    const t = p.life / p.max, s = (p.s0 + (p.s1 - p.s0) * t) * Math.min(1, (1 - t) / 0.3);
+    d.quaternion.copy(R.cam.quaternion); d.position.set(wx(p.x), p.h, wz(p.y)); d.scale.set(s, s, 1); d.updateMatrix();
+    if (p.add) { if (ns < 400) { R.sparkIM.setMatrixAt(ns, d.matrix); R.col.setHex(p.col).multiplyScalar(Math.max(0, 1 - t * 0.7)); R.sparkIM.setColorAt(ns, R.col); ns++; } }
+    else if (np < 400) { R.puffIM.setMatrixAt(np, d.matrix); R.col.setHex(p.col); R.puffIM.setColorAt(np, R.col); np++; }
+  }
+  fx3 = fx3.filter(p => p.life < p.max);
+  R.puffIM.count = np; R.sparkIM.count = ns;
+  for (const im of [R.puffIM, R.sparkIM]) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+  d.quaternion.set(0, 0, 0, 1);
 }
 function render3D(g, sx, sy) {
   const R = R3, T = R.T, d = R.dummy, C = CONFIG;
@@ -1516,6 +1555,7 @@ function render3D(g, sx, sy) {
     d.rotation.set(0, 0, 0); d.scale.set(r, r, r);
     for (const sgn of [-1, 1]) { if (h >= 1000) break; d.position.set(wx(x) + sgn * r * 0.3, r * 0.75, wz(y) + r * 0.7); d.updateMatrix(); R.enemyEye.setMatrixAt(h++, d.matrix); }
     d.rotation.set(-Math.PI / 2, 0, 0); d.position.set(wx(x), 0.03, wz(y)); d.scale.set(r * 2.6 * fl, r * 2.6 * fl, 1); d.updateMatrix(); R.glowIM.setMatrixAt(n, d.matrix);   
+    d.rotation.set(0, 0, 0); d.quaternion.copy(R.cam.quaternion); d.position.set(wx(x), r * 1.1, wz(y)); d.scale.set(r * 3.4 * fl, r * 3.4 * fl, 1); d.updateMatrix(); R.haloIM.setMatrixAt(n, d.matrix); d.quaternion.set(0, 0, 0, 1);   
     n++;
   };
   for (const e of g.enemies) flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'brute' ? 0xff3b1a : 0xff7a1a, e.x * 0.37);
@@ -1524,8 +1564,8 @@ function render3D(g, sx, sy) {
     const cols = sp.cols || 6, x0 = laneX(lane) - LANE_W * 0.4;
     for (let rI = 0; rI < sp.rows; rI++) for (let c = 0; c < cols; c++) flame(x0 + (c + 0.5) * (LANE_W * 0.8 / cols), -30 - rI * 19 - ahead, 9 / U3 * 1.1, 0xff7a1a, c + rI);
   }
-  R.enemyBody.count = R.enemyHorn.count = R.glowIM.count = n; R.enemyEye.count = h;
-  R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = R.enemyEye.instanceMatrix.needsUpdate = R.glowIM.instanceMatrix.needsUpdate = true;
+  R.enemyBody.count = R.enemyHorn.count = R.glowIM.count = R.haloIM.count = n; R.enemyEye.count = h;
+  R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = R.enemyEye.instanceMatrix.needsUpdate = R.glowIM.instanceMatrix.needsUpdate = R.haloIM.instanceMatrix.needsUpdate = true;
   if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
   
   n = 0;
@@ -1547,6 +1587,14 @@ function render3D(g, sx, sy) {
     R.bossBody.material.color.setHex(Bs.flash > 0 ? 0xffffff : 0xff5a1a);
     const fk = 1 + 0.06 * Math.sin(g.t * 13); R.boss.scale.set(r * fk, r * (2 - fk), r * fk);   
   }
+  
+  const now3 = performance.now(), fdt = clamp((now3 - (R.fxT || now3)) / 1000, 0, 0.05); R.fxT = now3;
+  if (!paused) {
+    for (const e of g.enemies) if (Math.random() < fdt * 0.6) fxSparks(e.x, e.y, 1);
+    for (const row of g.rows) for (const z of row.segs) if (z.s.type === 'tire' && z.s.hp > 0 && z.s.skin === 2 && Math.random() < fdt * 3) fxSmoke((z.x0 + z.x1) / 2, row.y, 1);
+    if (g.boss && g.boss.hp > 0 && g.boss.y > -20) { if (Math.random() < fdt * 8) fxSparks(g.boss.x + rr2(-40, 40), g.boss.y, 2); if (Math.random() < fdt * 3) fxSmoke(g.boss.x, g.boss.y - 20, 1); }
+    drawFx3(fdt);
+  } else drawFx3(0);
   R.renderer.render(R.scene3, R.cam);
 }
 

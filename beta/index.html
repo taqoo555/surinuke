@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v33';
+const VERSION = 'v34';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -50,12 +50,13 @@ const CONFIG = {
   MOVE_RATE: 0.6,                 
   RED_MIN: 12, RED_MAX: 22,       
   MUL_RATE: 0.15,                 
-  GATE_GROW: 0.06,                
+  GATE_GROW: 0.25,                
+  ROW_EVERY: 2,                   
 
   
-  LEVEL_GROW: 1.0,               
+  LEVEL_GROW: 1.1,               
   GRUNT_HP: 2, BRUTE_HP: 45,   
-  ENEMY_VY: 20,                   
+  ENEMY_VY: 10,                   
   
   HOMING: 45, CHASE_RANGE: 150,
 
@@ -69,8 +70,10 @@ const CONFIG = {
 
   BOSS_HP: 1000, CLASH: 25,       
 
-  TRACK_GAP: 230,                 
-  CHUNKS: 7,                      
+  
+  TRACK_GAP: 300,                 
+  SQUAD_AFTER: 1.0,               
+  CHUNKS: 6,                      
   WIDE_RATE: 0.28,                
   WIDE_RED: 0.7,                  
   WALL_RATE: 0.22,                
@@ -131,7 +134,12 @@ const SHOP_V24 = [
   { key: 'lvIncome', label: ['INCOME', ''],    col: '#ffd84a', eff: lv => '+' + Math.round(CONFIG.UP_INCOME * 100 * lv) + '%' },
   { key: 'lvArmy',   label: ['+1', 'SOLDIER'], col: '#7dff9b', eff: lv => (CONFIG.START_UNITS + lv) + ' start' },
 ];
-const SHOP = [];
+
+const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[3], SHOP_V24[2]];
+
+function powerOf(m) { const C = CONFIG; return Math.round(10 * (1 + C.UP_DMG * m.lvDmg) * (1 + C.UP_RATE * m.lvRate) * (C.START_UNITS + m.lvArmy)); }
+
+function recPower(level) { return Math.max(10, Math.round(7 * level * level / 5) * 5); }
 function shopCost(s, m) { return Math.round(CONFIG.COST_BASE * Math.pow(CONFIG.COST_GROW, m[s.key])); }
 
 
@@ -141,8 +149,8 @@ function newRun(level, m, seed) {
   const g = {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
     t: 0, over: null,
-    N: C.START_UNITS,   
-    power: 1, rateMul: 1, income: 1,
+    N: C.START_UNITS + m.lvArmy,   
+    power: 1 + C.UP_DMG * m.lvDmg, rateMul: 1 + C.UP_RATE * m.lvRate, income: 1 + C.UP_INCOME * m.lvIncome,
     wlv: 0, lock: null,
     lx: 180, target: 180, units: [], cR: 10, cDepth: 10, shotAcc: [],
     bullets: [], enemies: [], rows: [], walls: [], boss: null,
@@ -311,8 +319,11 @@ function buildTrack(g) {
     
     g.ramp = Math.min(1, 0.4 + 0.15 * c); g.chunk = c;
     
-    const rows = c < 2 ? 1 : 1 + Math.floor(c / 3) + Math.floor((g.level - 1) / 5);
-    const cols = c < 2 ? c + 1 : Math.min(6, 1 + c + Math.floor(g.level / 4));
+    
+    const G = C.TRACK_GAP * rr(0.75, 1.35);
+    
+    const rows = c < 2 ? 1 : 1 + Math.floor(c / 3) + Math.min(6, Math.floor((g.level - 1) / C.ROW_EVERY));
+    const cols = c < 2 ? c + 1 : Math.min(6, 1 + c + Math.floor(g.level / 3));
     if (left <= 0) {   
       const t = rng();
       theme = c < 2 ? 'open' : t < S.lane ? 'lane' : t < S.lane + S.wall ? 'wall' : 'open';
@@ -325,7 +336,7 @@ function buildTrack(g) {
     if (theme === 'lane') {
       
       const mon = [0, 1, 2].filter(i => i !== up);
-      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 5, brute: g.level >= 3 && k === 1 });
+      T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 5, brute: g.level >= 3 && k === 1 });
       const upSlot = k % 3 === 0 ? (CONFIG.WEAPON_TIRES ? slotWeaponTire(g) : slotBlue(g, 0.8, true)) : k % 3 === 1 ? slotBlue(g, 0.7, true) : slotRed(g, 0.6);
       const big = rng() < 0.5 ? 0 : 1;
       const lanes = [];
@@ -336,7 +347,7 @@ function buildTrack(g) {
     }
     if (theme === 'wall') {
       
-      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
+      T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
       const plans = shuffle3([
         [slotBlue(g, 0.8), 'squad'],
         [slotRed(g, 1.3), { type: 'mul', v: 2, good: true, hitT: 0 }],
@@ -354,12 +365,12 @@ function buildTrack(g) {
     
     if (c >= 2 && r < S.wide) {
       
-      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows, cols: 4, brute: g.level >= 3 && rng() < 0.4 });   
+      T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [0, 1, 2], rows, cols: 4, brute: g.level >= 3 && rng() < 0.4 });   
       const w = slotRed(g, CONFIG.WIDE_RED); w.wide = true;   
       T.push({ dist: d += 170, kind: 'row', lanes: [w, w, w] });
       continue;
     }
-    T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: [ri(0, 2)], rows, cols, soft: c < 2 });
+    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [ri(0, 2)], rows, cols, soft: c < 2 });
     if (c >= 2 && r < S.wide + S.tire) {
       
       const open = ri(0, 2), wl = (open + ri(1, 2)) % 3;
@@ -695,9 +706,10 @@ window.__campaign = function (opt) {
     let seed = opt.seed || 1;
     for (let L = 1; L <= opt.levels; L++) {
       let tries = 0, res;
-      do { tries++; res = runSim(opt.bot, L, m, seed++); m.coins += res.coins; autoBuy(m); }
+      let pw;
+      do { tries++; pw = powerOf(m); res = runSim(opt.bot, L, m, seed++); m.coins += res.coins; autoBuy(m); }
       while (res.result !== 'clear' && tries < (opt.maxTries || 6));
-      out.push({ L, tries, clear: res.result === 'clear', N: res.N, peak: res.peak, prog: res.prog, ups: m.lvRate + m.lvDmg + m.lvIncome + m.lvArmy, lost: res.lost });
+      out.push({ L, tries, pw, clear: res.result === 'clear', N: res.N, peak: res.peak, prog: res.prog, ups: m.lvRate + m.lvDmg + m.lvIncome + m.lvArmy, lost: res.lost });
       if (res.result !== 'clear') break;
     }
     return out;
@@ -1084,15 +1096,17 @@ function drawMenu() {
   txt('WARS', 180, 96, 44, '#fff36b');   
   txt('LEVEL ' + meta.level, 180, 150, 30, '#fff');
   txt(stageOf(meta.level).name, 180, 184, 16, '#ffd84a');   
+  { const pw = powerOf(meta), rec = recPower(meta.level), ok = pw >= rec;   
+    txt('POWER ' + pw.toLocaleString('en-US'), 180, 222, 22, ok ? '#7dff9b' : '#ffb35a');
+    txt('recommended ' + rec.toLocaleString('en-US'), 180, 246, 12, '#c9d2e3', 'center', '600'); }
   
-  const n = CONFIG.START_UNITS, t = performance.now() / 1000;
+  const n = CONFIG.START_UNITS + meta.lvArmy, t = performance.now() / 1000;
   for (let k = 0; k < Math.min(n, 30); k++) {
     const x = 180 + ((k % 6) - (Math.min(n, 6) - 1) / 2) * 10, y = 300 + Math.floor(k / 6) * 10;
     ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.28); ctx.fill();
     ctx.fillStyle = '#6fc3ff'; ctx.beginPath(); ctx.arc(x, y - 0.5, 3, 0, 6.28); ctx.fill();
   }
   txt(String(n), 180, 276, 16, '#fff');
-  ctx.fillStyle = '#e8f4ff'; for (let k = 0; k < 3; k++) ctx.fillRect(179, 196 + ((t * 160 + k * 22) % 66), 3, 8);
   const pulse = 1 + 0.04 * Math.sin(t * 5), b = PLAY_BTN;
   ctx.save(); ctx.translate(180, b.y + b.h / 2); ctx.scale(pulse, pulse);
   ctx.fillStyle = '#ffd84a'; rrect(-b.w / 2, -b.h / 2, b.w, b.h, 14); ctx.fill();
@@ -1334,9 +1348,11 @@ function render3D(g, sx, sy) {
   if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
   
   n = 0;
+  const bs = Math.min(3, 1 + (g.power - 1) * 0.9);
+  R.bulletIM.material.color.setHSL(Math.max(0, 0.15 - (g.power - 1) * 0.06), 1, 0.65);
   for (const b of g.bullets) {
     if (n >= 700) break;
-    d.rotation.set(0, 0, 0); d.position.set(wx(b.x), 0.55, wz(b.y)); d.scale.set(1, 1, 1); d.updateMatrix(); R.bulletIM.setMatrixAt(n++, d.matrix);
+    d.rotation.set(0, 0, 0); d.position.set(wx(b.x), 0.55, wz(b.y)); d.scale.set(bs, bs, 1 + (bs - 1) * 0.5); d.updateMatrix(); R.bulletIM.setMatrixAt(n++, d.matrix);
   }
   R.bulletIM.count = n; R.bulletIM.instanceMatrix.needsUpdate = true;
   

@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v13';
+const VERSION = 'v14';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -908,18 +908,25 @@ function update(g, dt) {
     
     const front = C.LEADER_Y - 14 - B.r;
     
-    if (B.y < front) B.y = Math.min(front, B.y + scroll * dt);   
+    if (B.y < front && !B.melee) B.y = Math.min(front, B.y + scroll * dt);   
     B.x += clamp(g.lx - B.x, -35 * dt, 35 * dt);
     B.x = clamp(B.x, C.ROAD_L + B.r, C.ROAD_R - B.r);
     if (B.burn > 0) { B.burn -= dt; hurt(g, B, B.burnD * dt, true); }
     
     
+    
     if (B.y >= front && Math.abs(B.x - g.lx) < B.r + C.FORMATION_W / 2) {
-      const need = Math.ceil(B.hp / C.CLASH);
-      if (!SIM) { shake(12); sfx('boss'); bigBoom(B.x, B.y + B.r); }
-      if (g.N >= need) { B.hp = 0; loseUnits(g, need, 'lostContact', B.x, B.y + B.r); }
-      else { loseUnits(g, g.N, 'lostContact', B.x, B.y + B.r); }
-      if (g.over) return;
+      if (!B.melee) { B.melee = { tick: 0, chunk: Math.max(1, Math.ceil(B.hp / C.CLASH / 24)) }; if (!SIM) { shake(10); sfx('boss'); } }
+      B.melee.tick -= dt;
+      while (B.melee.tick <= 0 && B.hp > 0 && g.N > 0) {
+        B.melee.tick += 0.05;
+        const n = Math.min(B.melee.chunk, g.N, Math.ceil(B.hp / C.CLASH));
+        B.hp -= n * C.CLASH; B.flash = 0.05;
+        g.N -= n; g.stats.lostContact += n;
+        for (const k in g.typ) g.typ[k] = Math.min(g.typ[k], g.N);
+        if (!SIM) { burst(B.x + rr(-40, 40), B.y + B.r + rr(-6, 10), rr(0, 1) < 0.5 ? '#7a7f8a' : '#ffb36b', 6); if (rng() < 0.3) popText(B.x + rr(-30, 30), B.y + B.r, '-' + n, '#ff5a6a', 13); shake(3); }
+      }
+      if (g.N <= 0) { g.N = 0; g.over = 'fail'; if (!SIM) sfx('fail'); return; }
     }
   }
 

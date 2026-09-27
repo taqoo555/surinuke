@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v55';
+const VERSION = 'v56';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -51,11 +51,12 @@ const CONFIG = {
   RED_MIN: 16, RED_MAX: 30,       
   MUL_RATE: 0.15,                 
   GATE_GROW: 0.25,                
+  RED_GROW: 0.10,                 
   ROW_EVERY: 1,                      
 
   
   LEVEL_GROW: 1.10,               
-  GRUNT_HP: 2, BRUTE_HP: 45,   
+  GRUNT_HP: 1.6, BRUTE_HP: 45,      
   SPLIT_HP: 6, BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
   ENEMY_VY: 10,                   
   
@@ -72,7 +73,7 @@ const CONFIG = {
   WEAPON_TIRES: false,
   WEAPON_HP: 200, WEAPON_FIRST: 0.5,                
 
-  BOSS_HP: 1000, CLASH: 25,       
+  BOSS_HP: 800, CLASH: 25,         
 
   
   
@@ -83,6 +84,8 @@ const CONFIG = {
   ARMY_W: 120,                    
   
   ROW_W: [0.30, 0.45, 0.70, 0.80, 0.90, 0.93],
+  EASY_BLUE: [1, 5],              
+  HARD_RATE: 0.5, HARD_ROWS: 1,   
   TUTOR_RED: [30, 8],             
   GUARD_HP: 0.8,                  
   FINAL_ROWS: 3,                  
@@ -97,6 +100,7 @@ const CONFIG = {
 
   
   UP_RATE: 0.10, UP_DMG: 0.12, UP_INCOME: 0.15,
+  UP_ARMY: 2,                     
   COST_BASE: 40, COST_GROW: 1.32, 
 
   VOLUME: 0.35,
@@ -149,12 +153,12 @@ const SHOP_V24 = [
   { key: 'lvRate',   icon: 'rate',   col: '#6fc3ff', eff: lv => mulText(1 + CONFIG.UP_RATE * lv) },
   { key: 'lvDmg',    icon: 'dmg',    col: '#ff8a5a', eff: lv => mulText(1 + CONFIG.UP_DMG * lv) },
   { key: 'lvIncome', icon: 'income', col: '#ffd84a', eff: lv => mulText(1 + CONFIG.UP_INCOME * lv) },
-  { key: 'lvArmy',   icon: 'army',   col: '#7dff9b', eff: lv => String(CONFIG.START_UNITS + lv) },
+  { key: 'lvArmy',   icon: 'army',   col: '#7dff9b', eff: lv => String(CONFIG.START_UNITS + CONFIG.UP_ARMY * lv) },
 ];
 
 const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[3], SHOP_V24[2]];
 
-function powerOf(m) { const C = CONFIG; return Math.round(10 * (1 + C.UP_DMG * m.lvDmg) * (1 + C.UP_RATE * m.lvRate) * (C.START_UNITS + m.lvArmy)); }
+function powerOf(m) { const C = CONFIG; return Math.round(10 * (1 + C.UP_DMG * m.lvDmg) * (1 + C.UP_RATE * m.lvRate) * (C.START_UNITS + C.UP_ARMY * m.lvArmy)); }
 
 function recPower(level) { return Math.max(10, Math.round(7.5 * level * level / 5) * 5); }   
 function shopCost(s, m) { return Math.round(CONFIG.COST_BASE * Math.pow(CONFIG.COST_GROW, m[s.key])); }
@@ -166,7 +170,7 @@ function newRun(level, m, seed) {
   const g = {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
     t: 0, over: null,
-    N: C.START_UNITS + m.lvArmy,   
+    N: C.START_UNITS + C.UP_ARMY * m.lvArmy,   
     power: 1 + C.UP_DMG * m.lvDmg, rateMul: 1 + C.UP_RATE * m.lvRate, income: 1 + C.UP_INCOME * m.lvIncome,
     wlv: 0, lock: null,
     lx: 180, target: 180, units: [], cR: 10, cDepth: 10, shotAcc: [],
@@ -240,6 +244,20 @@ const LANE_W = (CONFIG.ROAD_R - CONFIG.ROAD_L) / 3;
 function laneOf(x) { return clamp(Math.floor((x - CONFIG.ROAD_L) / LANE_W), 0, 2); }
 function laneX(i) { return CONFIG.ROAD_L + LANE_W * (i + 0.5); }
 
+
+function slotEasy() { return { type: 'add', v: ri(CONFIG.EASY_BLUE[0], CONFIG.EASY_BLUE[1]), good: true, hitT: 0 }; }
+
+function mergeLanes(lanes) {
+  const parts = [], cuts = [];
+  for (let i = 0; i < 3; i++) {
+    const s = lanes[i], prev = parts[parts.length - 1];
+    if (prev && s.type === 'add' && !s.good && prev.type === 'add' && !prev.good) { prev.v = Math.min(prev.v, s.v); continue; }
+    if (prev && s === prev) continue;
+    if (i > 0) cuts.push({ x: CONFIG.ROAD_L + LANE_W * i, sg: 0, w: 0, wa: 0, amp: 0, f: 1, ph: 0 });
+    parts.push(s);
+  }
+  return { parts, cuts };
+}
 function slotBlue(g, big, noMul) {
   
   if (!noMul && rng() < CONFIG.MUL_RATE) return { type: 'mul', v: 2, good: true, hitT: 0 };
@@ -249,7 +267,7 @@ function slotBlue(g, big, noMul) {
 
 function slotRed(g, big, allowDiv) {
   if (allowDiv && rng() < 0.3) return { type: 'div', v: 2, charge: 0, need: CONFIG.DIV_NEED, good: false, hitT: 0 };
-  const k = Math.max(3, Math.round(rr(CONFIG.RED_MIN, CONFIG.RED_MAX) * g.sc * g.ramp * (big || 1)));
+  const k = Math.max(3, Math.round(rr(CONFIG.RED_MIN, CONFIG.RED_MAX) * (1 + CONFIG.RED_GROW * (g.level - 1)) * g.ramp * (big || 1)));   
   return { type: 'add', v: -k, good: false, hitT: 0 };
 }
 
@@ -328,25 +346,28 @@ function freeRow(g, c) {
     return { parts, cuts: [cut(cx, -1, w, wa, amp, f, ph), cut(cx, 1, w, wa, amp, f, ph)] };
   };
   
-  const blue = k => slotBlue(g, k || 1, true), red = k => slotRed(g, k || 1);
+  
+  const hard = c >= 2 && !(g.level === 1 && c < 3) && rng() < C.HARD_RATE;   
+  const blue = k => hard || g.level === 1 ? slotBlue(g, k || 1, true) : slotEasy(), red = k => slotRed(g, k || 1);   
   const obst = () => { const t = slotTire(g, C.GATE_OBST_HP); t.sign = true; return t; };   
   const fixed = x => cut(x, 0, 0, 0, 0, 1, 0), L1 = L + LANE_W, L2 = L + LANE_W * 2;
   const mid = (a2, b2) => (a2 + b2) / 2;
   
   const fix = v => ({ type: 'add', v, good: v > 0, hitT: 0 });
   if (g.level === 1 && c < 3) {
-    if (c === 0) { const f = win([red(), blue(2), red()], 120); f.blueX = f.cuts[0].x; return f; }
+    if (c === 0) { const f = win([red(), slotBlue(g, 2, true), red()], 120); f.blueX = f.cuts[0].x; return f; }   
     return { parts: [fix(c === 1 ? -C.TUTOR_RED[0] : -C.TUTOR_RED[1])], cuts: [] };
   }
   
   const W = C.ROW_W;
   
-  if (c < 2) { const q = rng(); return q < 0.5 ? freeRowAt(W[2] + (W[3] - W[2]) * rng()) : freeRowAt(W[3] + (W[4] - W[3]) * rng()); }
-  return freeRowAt(r);
+  const out = c < 2 ? (rng() < 0.5 ? freeRowAt(W[2] + (W[3] - W[2]) * rng()) : freeRowAt(W[3] + (W[4] - W[3]) * rng())) : freeRowAt(r);
+  if (out.blueX != null && out.guard == null) out.hard = hard;
+  return out;
   function freeRowAt(r) {
   if (r < W[0]) return { parts: [red(1.2)], cuts: [] };                                            
   if (r < W[1]) {                                                                                   
-    const k = rng() < 0.5 ? 0 : 2, gb = rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : blue(1.3);
+    const k = rng() < 0.5 ? 0 : 2, gb = rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1.3, true);
     return { parts: k === 0 ? [gb, red(1.2)] : [red(1.2), gb], cuts: [fixed(k === 0 ? L1 : L2)], blueX: laneX(k), guard: k };
   }
   if (r < W[2]) {                                                                                   
@@ -359,7 +380,7 @@ function freeRow(g, c) {
     const x = rr(110, 250), bl = rng() < 0.5;
     return { parts: bl ? [blue(0.9), red(1.3)] : [red(1.3), blue(0.9)], cuts: [one(x)], blueX: bl ? mid(L, x) : mid(x, R) };
   }
-  if (r < W[4]) { const f = win([red(1.2), rng() < 0.1 ? { type: 'mul', v: 2, good: true, hitT: 0 } : blue(), red(1.2)], rr(50, 100)); f.blueX = f.cuts[0].x; return f; }   
+  if (r < W[4]) { const f = win([red(1.2), hard && rng() < 0.2 ? { type: 'mul', v: 2, good: true, hitT: 0 } : blue(), red(1.2)], rr(50, 100)); f.blueX = f.cuts[0].x; f.hard = hard; return f; }   
   if (r < W[5]) {                                                                                   
     const w = rr(115, 150), cx = rr(L + w / 2 + 50, R - w / 2 - 50), ph = rr(0, 6.28), amp = move ? rr(15, 35) : 0;
     const left = rng() < 0.5;
@@ -402,27 +423,28 @@ function buildTrack(g) {
       const mon = [0, 1, 2].filter(i => i !== up);
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 5, brute: g.level >= 3 && k === 1, mix: mixOf(g) });
       
-      const upSlot = k % 3 === 0 ? (CONFIG.WEAPON_TIRES ? slotWeaponTire(g) : slotBlue(g, 0.8, true)) : k % 3 === 1 ? slotRed(g, 0.6) : slotTire(g, 0.6);
+      const upSlot = k % 3 === 0 ? (CONFIG.WEAPON_TIRES ? slotWeaponTire(g) : slotEasy()) : k % 3 === 1 ? slotRed(g, 0.6) : slotTire(g, 0.6);   
       const big = rng() < 0.5 ? 0 : 1;
       const lanes = [];
       lanes[up] = upSlot; lanes[mon[big]] = upSlot.good ? slotRed(g, 0.8) : slotBlue(g, C.MON_BLUE); lanes[mon[1 - big]] = slotRed(g);
-      T.push({ dist: d += G * 0.9, kind: 'row', lanes });
+      T.push({ dist: d += G * 0.9, kind: 'row', free: mergeLanes(lanes) });
       k++;
       continue;
     }
     if (theme === 'wall') {
       
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
+      
       const plans = shuffle3([
-        [slotBlue(g, 0.8), 'squad'],
-        [slotRed(g, 1.3, true), { type: 'mul', v: 2, good: true, hitT: 0 }],
-        [slotWeaponTire(g), slotBlue(g)],
+        [slotEasy(), 'squad'],
+        [slotRed(g, 1.3, true), { type: 'mul', v: 2, good: true, hitT: 0 }, 'squad'],
+        [slotWeaponTire(g), slotBlue(g, 1, true)],
       ]);
       const w0 = d + G * 0.9, len = 60 + G + 150;
       T.push({ dist: w0, kind: 'wall', len });
       T.push({ dist: w0 + 60, kind: 'row', lanes: plans.map(p => p[0]) });
       const second = plans.map(p => p[1] === 'squad' ? { type: 'empty' } : p[1]);
-      T.push({ dist: w0 + 60 + G * 0.55, kind: 'squad', lanes: plans.map((p, i) => p[1] === 'squad' ? i : -1).filter(i => i >= 0), rows: rows + 1, cols: 5 });
+      T.push({ dist: w0 + 60 + G * 0.55, kind: 'squad', lanes: plans.map((p, i) => p[1] === 'squad' || p[2] === 'squad' ? i : -1).filter(i => i >= 0), rows: rows + 1, cols: 5 });
       T.push({ dist: w0 + 60 + G, kind: 'row', lanes: second });
       d = w0 + len;
       continue;
@@ -432,7 +454,7 @@ function buildTrack(g) {
       
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [0, 1, 2], rows, cols: 4, brute: g.level >= 3 && rng() < 0.4 });   
       const w = slotRed(g, CONFIG.WIDE_RED); w.wide = true;   
-      T.push({ dist: d += 170, kind: 'row', lanes: [w, w, w] });
+      T.push({ dist: d += 170, kind: 'row', free: { parts: [w], cuts: [] } });
       continue;
     }
     if (c >= 2 && r < S.wide + S.tire) {
@@ -446,10 +468,10 @@ function buildTrack(g) {
     
     const fr = freeRow(g, c);
     
-    const tut = g.level === 1 && c < 3, bl = fr.blueX != null && !tut, strong = bl && fr.guard == null;
+    const tut = g.level === 1 && c < 3, strong = fr.hard && !tut;   
     const sl = fr.guard != null ? (fr.guard + ri(1, 2)) % 3 : fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2);
-    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? 1 : 0), cols, brute: strong && g.level >= 3 && rng() < 0.5, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
-    if (fr.guard != null) T.push({ dist: d + G * 0.55, kind: 'row', lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
+    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? C.HARD_ROWS : 0), cols: strong ? Math.max(cols, 5) : cols, brute: strong && g.level >= 3, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
+    if (fr.guard != null) T.push({ dist: d + G * 0.55, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
     T.push({ dist: d += G, kind: 'row', free: fr });
     if (c >= 1 && rng() < C.FILLER) T.push({ dist: d + G * 0.45, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });   
   }
@@ -488,7 +510,7 @@ function trackFlow(g, dt, scroll) {
   if (!g.boss) g.dist += scroll * dt;
   while (g.ti < g.track.length && g.dist >= g.track[g.ti].dist) {
     const sp = g.track[g.ti++];
-    if (sp.kind === 'row') { const row = { y: -40, lanes: sp.lanes || [], free: sp.free, done: false }; row.segs = rowSegs(row, g.t); g.rows.push(row); }
+    if (sp.kind === 'row') { const row = { y: -40, lanes: sp.lanes || [], free: sp.free, done: false, guard: sp.guard }; row.segs = rowSegs(row, g.t); g.rows.push(row); }
     else if (sp.kind === 'wall') g.walls.push({ y: -40, len: sp.len, lane: null });
     else if (sp.kind === 'squad') sp.lanes.forEach((l, k) => spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === (sp.lanes.length === 1 ? 0 : 1), sp.soft, k === 0 && sp.mix));   
     else if (sp.kind === 'boss') spawnBoss(g);   
@@ -755,7 +777,7 @@ function botStep(g, bot, st) {
   if (g.boss && !g.rows.some(r => !r.done)) { g.target = g.boss.x; return; }   
   const W = weapon(g), shots = g.units.length * C.SHOT_RATE * g.rateMul * W.rate, dps = g.N * g.power * g.rateMul * W.rate * W.dmg;
   const w = g.walls.find(w => w.lane == null && w.y < C.LEADER_Y && w.y > C.LEADER_Y - 420);
-  const rows = g.rows.filter(r => !r.done && r.y < C.LEADER_Y && (w ? r.y >= w.y - w.len - 5 : true)).sort((a, b) => b.y - a.y).slice(0, w ? 3 : 1);
+  const rows = g.rows.filter(r => !r.done && r.y < C.LEADER_Y && (w ? r.y >= w.y - w.len - 5 : true)).sort((a, b) => b.y - a.y).filter((r, i, a) => i < (w ? 3 : a[0] && a[0].guard ? 2 : 1));   
   
   const fw = formW(g), cands = [0, 1, 2].map(laneX);
   if (rows[0] && !w) for (const z of rows[0].segs) cands.push(clamp((z.x0 + z.x1) / 2, C.ROAD_L + fw / 2, C.ROAD_R - fw / 2));

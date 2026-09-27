@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v47';
+const VERSION = 'v48';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1142,14 +1142,11 @@ function drawIcon(kind, cx, cy, sz) {
     for (const dx of [-sz * 0.2, sz * 0.12]) { ctx.beginPath(); ctx.moveTo(cx + dx - sz * 0.14, cy - sz * 0.3); ctx.lineTo(cx + dx + sz * 0.14, cy); ctx.lineTo(cx + dx - sz * 0.14, cy + sz * 0.3); ctx.stroke(); }
     ctx.lineCap = 'butt';
   } else if (kind === 'army') {   
-    const x = cx - sz * 0.08;
-    ctx.fillStyle = '#23408f'; rrect(x - sz * 0.27, cy + sz * 0.02, sz * 0.54, sz * 0.44, 7); ctx.fill();          
-    ctx.fillStyle = '#8fb3e0'; rrect(x - sz * 0.13, cy + sz * 0.06, sz * 0.26, sz * 0.3, 4); ctx.fill();           
-    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.27, cy + sz * 0.38, sz * 0.54, sz * 0.05);                   
-    ctx.fillStyle = '#2a7ae8'; ctx.beginPath(); ctx.ellipse(x, cy - sz * 0.02, sz * 0.3, sz * 0.08, 0, 0, 6.28); ctx.fill();   
-    ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(x, cy - sz * 0.04, sz * 0.22, Math.PI, 0); ctx.fill();      
-    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.03, cy - sz * 0.26, sz * 0.06, sz * 0.22);                   
-    plus(cx + sz * 0.33, cy - sz * 0.2, '#7dff9b');
+    const r = sz * 0.3, x = cx, y = cy + sz * 0.05;
+    ctx.fillStyle = '#1c357a'; ctx.beginPath(); ctx.moveTo(x - r * 0.95, y); ctx.lineTo(x - r * 1.1, y + r * 1.4); ctx.quadraticCurveTo(x, y + r * 1.75, x + r * 1.1, y + r * 1.4); ctx.lineTo(x + r * 0.95, y); ctx.fill();   
+    ctx.fillStyle = '#2a6fd8'; ctx.beginPath(); ctx.ellipse(x, y, r * 1.25, r * 0.55, 0, 0, 6.28); ctx.fill();          
+    ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(x, y - r * 0.15, r * 0.95, Math.PI, 0); ctx.ellipse(x, y - r * 0.15, r * 0.95, r * 0.42, 0, 0, Math.PI); ctx.fill();   
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.6, r * 0.28, r * 0.16, -0.5, 0, 6.28); ctx.fill();   
   } else if (kind === 'income') {   
     for (let k = 0; k < 3; k++) { const y = cy + sz * 0.32 - k * sz * 0.13;
       ctx.fillStyle = '#9a6a08'; ctx.beginPath(); ctx.ellipse(cx, y + 3, sz * 0.36, sz * 0.12, 0, 0, 6.28); ctx.fill();
@@ -1555,7 +1552,8 @@ function render3D(g, sx, sy) {
     d.position.set(wx(u.x), 0.3 * k, wz(u.y)); d.scale.set(k, k, k); d.updateMatrix(); R.unitBody.setMatrixAt(n, d.matrix);
     d.position.y = 0.72 * k; d.updateMatrix(); R.unitHead.setMatrixAt(n, d.matrix);
     d.position.y = 0.66 * k; d.updateMatrix(); R.unitBrim.setMatrixAt(n, d.matrix);
-    d.position.y = 0.925 * k; d.updateMatrix(); R.unitStripe.setMatrixAt(n, d.matrix);
+    
+    d.scale.set(0, 0, 0); d.updateMatrix(); R.unitStripe.setMatrixAt(n, d.matrix); d.scale.set(k, k, k);
     d.position.set(wx(u.x), 0.38 * k, wz(u.y) + 0.24 * k); d.updateMatrix(); R.unitTank.setMatrixAt(n, d.matrix);
     n++;
   }

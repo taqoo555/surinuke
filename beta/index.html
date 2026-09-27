@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v32';
+const VERSION = 'v33';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1170,8 +1170,8 @@ function init3D() {
     const renderer = new T.WebGLRenderer({ canvas: glc, antialias: true });
     renderer.setClearColor(0xa9d3f5);   
     const scene3 = new T.Scene();
-    scene3.fog = new T.Fog(0xa9d3f5, 34, 56);
-    const cam = new T.PerspectiveCamera(CAM3.fov, CONFIG.W / CONFIG.H, 0.5, 90);
+    scene3.fog = new T.Fog(0xa9d3f5, 60, 110);   
+    const cam = new T.PerspectiveCamera(CAM3.fov, CONFIG.W / CONFIG.H, 0.5, 160);
     scene3.add(new T.HemisphereLight(0xffffff, 0x4a5578, 0.75));
     const sun = new T.DirectionalLight(0xffffff, 0.55); sun.position.set(-6, 14, 8); scene3.add(sun);
     const M = (c, o) => new T.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
@@ -1181,16 +1181,16 @@ function init3D() {
     const rx = rc.getContext('2d');
     rx.fillStyle = '#4e5878'; rx.fillRect(0, 0, 256, 256);
     rx.fillStyle = 'rgba(255,255,255,0.5)'; for (const lx of [256 / 3, 512 / 3]) rx.fillRect(lx - 3, 0, 6, 128);
-    const tex = new T.CanvasTexture(rc); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(1, 20);
-    const roadW = (CONFIG.ROAD_R - CONFIG.ROAD_L) / U3, roadL = 80;
+    const tex = new T.CanvasTexture(rc); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(1, 35);
+    const roadW = (CONFIG.ROAD_R - CONFIG.ROAD_L) / U3, roadL = 140;
     const road = new T.Mesh(new T.PlaneGeometry(roadW, roadL), M(0xffffff, { map: tex }));
     road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -roadL / 2 + 12); scene3.add(road);
-    const water = new T.Mesh(new T.PlaneGeometry(80, roadL), M(0x3a8fd8)); water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
+    const water = new T.Mesh(new T.PlaneGeometry(160, roadL), M(0x3a8fd8)); water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
     for (const sx of [-1, 1]) {   
       const rail = new T.Mesh(new T.BoxGeometry(0.25, 0.25, roadL), M(0x6f7ba8)); rail.position.set(sx * (roadW / 2 + 0.15), 0.9, -roadL / 2 + 12); scene3.add(rail);
       const side = new T.Mesh(new T.BoxGeometry(0.4, 1.2, roadL), M(0x39436a)); side.position.set(sx * (roadW / 2 + 0.2), -0.6, -roadL / 2 + 12); scene3.add(side);
     }
-    const postIM = new T.InstancedMesh(new T.BoxGeometry(0.22, 0.9, 0.22), M(0x8a96c8), 60); scene3.add(postIM);
+    const postIM = new T.InstancedMesh(new T.BoxGeometry(0.22, 0.9, 0.22), M(0x8a96c8), 110); scene3.add(postIM);
     
     const pool = make => { const p = { items: [], n: 0, get() { if (p.n >= p.items.length) { const o = make(); scene3.add(o); p.items.push(o); } const o = p.items[p.n++]; o.visible = true; return o; },
       end() { for (let i = p.n; i < p.items.length; i++) p.items[i].visible = false; p.n = 0; } }; return p; };
@@ -1240,20 +1240,36 @@ function P3(x, y, h) {
 }
 
 function SP(x, y) { return R3.on && scene === 'play' ? P3(x, y, 0.8) : [x, y, 1]; }
+
+const LOOK3 = 900;   
+function ahead3D(g) {
+  const out = { rows: [], walls: [], squads: [], boss: null };
+  if (!g.track) return out;
+  for (let i = g.ti; i < g.track.length; i++) {
+    const sp = g.track[i], ahead = sp.dist - g.dist;
+    if (ahead > LOOK3) break;
+    if (sp.kind === 'row') { const r = sp._row || (sp._row = { lanes: sp.lanes || [], free: sp.free, done: false }); r.segs = rowSegs(r, g.t); r.y = -40 - ahead; out.rows.push(r); }
+    else if (sp.kind === 'wall') out.walls.push({ y: -40 - ahead, len: sp.len });
+    else if (sp.kind === 'squad') out.squads.push({ sp, ahead });
+    else if (sp.kind === 'boss') out.boss = { y: -60 - ahead };
+  }
+  return out;
+}
 function render3D(g, sx, sy) {
   const R = R3, T = R.T, d = R.dummy, C = CONFIG;
   R.cam.position.set(sx * 0.05, CAM3.y + sy * 0.05, CAM3.z); R.cam.lookAt(sx * 0.05, 0, CAM3.look);
   R.tex.offset.y = (bgY / U3) / 4;   
-  for (let i = 0; i < 60; i++) {   
-    const z = -52 + ((i >> 1) * 2.4 + (bgY / U3) % 2.4);
+  for (let i = 0; i < 110; i++) {   
+    const z = -118 + ((i >> 1) * 2.4 + (bgY / U3) % 2.4);
     d.position.set((i & 1 ? 1 : -1) * ((C.ROAD_R - C.ROAD_L) / U3 / 2 + 0.15), 0.45, z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix();
     R.postIM.setMatrixAt(i, d.matrix);
   }
   R.postIM.instanceMatrix.needsUpdate = true;
   
-  for (const row of g.rows) {
+  const AH = R.ah = ahead3D(g);
+  for (const row of g.rows.concat(AH.rows)) {
     const z = wz(row.y);
-    if (z < -46 || z > 14) continue;
+    if (z < -100 || z > 14) continue;
     for (const s of row.segs) {
       const sl = s.s, x0 = wx(s.x0), x1 = wx(s.x1), cx = (x0 + x1) / 2, w = x1 - x0;
       if (sl.type === 'empty') continue;
@@ -1274,7 +1290,7 @@ function render3D(g, sx, sy) {
   }
   R.panels.end(); R.frames.end(); R.tires.end();
   
-  for (const w of g.walls) for (const bx of [C.ROAD_L + LANE_W, C.ROAD_L + LANE_W * 2]) {
+  for (const w of g.walls.concat(AH.walls)) for (const bx of [C.ROAD_L + LANE_W, C.ROAD_L + LANE_W * 2]) {
     const m = R.walls.get(), z0 = wz(w.y - w.len), z1 = wz(w.y);
     m.position.set(wx(bx), 0.8, (z0 + z1) / 2); m.scale.set(0.45, 1.6, z1 - z0);
   }
@@ -1301,6 +1317,18 @@ function render3D(g, sx, sy) {
     for (const sgn of [-1, 1]) { d.position.set(wx(e.x) + sgn * r * 0.55, r * 1.75 + bob, wz(e.y)); d.rotation.set(0, 0, -sgn * 0.4); d.scale.set(r, r, r); d.updateMatrix(); R.enemyHorn.setMatrixAt(h++, d.matrix); }
     n++;
   }
+  
+  const put = (x, y, r, col) => {
+    if (n >= 500) return;
+    d.rotation.set(0, 0, 0); d.position.set(wx(x), r, wz(y)); d.scale.set(r, r, r); d.updateMatrix(); R.enemyBody.setMatrixAt(n, d.matrix);
+    R.col.setHex(col); R.enemyBody.setColorAt(n, R.col);
+    for (const sgn of [-1, 1]) { if (h >= 1000) break; d.position.set(wx(x) + sgn * r * 0.55, r * 1.75, wz(y)); d.rotation.set(0, 0, -sgn * 0.4); d.updateMatrix(); R.enemyHorn.setMatrixAt(h++, d.matrix); }
+    n++;
+  };
+  for (const { sp, ahead } of AH.squads) for (const lane of sp.lanes) {
+    const cols = sp.cols || 6, x0 = laneX(lane) - LANE_W * 0.4;
+    for (let rI = 0; rI < sp.rows; rI++) for (let c = 0; c < cols; c++) put(x0 + (c + 0.5) * (LANE_W * 0.8 / cols), -30 - rI * 19 - ahead, 9 / U3 * 1.1, 0xff4d5e);
+  }
   R.enemyBody.count = n; R.enemyHorn.count = h;
   R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = true;
   if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
@@ -1312,7 +1340,7 @@ function render3D(g, sx, sy) {
   }
   R.bulletIM.count = n; R.bulletIM.instanceMatrix.needsUpdate = true;
   
-  const Bs = g.boss;
+  const Bs = g.boss || (AH.boss && { x: 180, y: AH.boss.y, r: 46, hp: 1, flash: 0 });   
   R.boss.visible = !!(Bs && Bs.hp > 0);
   if (R.boss.visible) {
     const r = Bs.r / U3;
@@ -1323,8 +1351,8 @@ function render3D(g, sx, sy) {
 }
 
 function drawLabels3D(g) {
-  for (const row of g.rows) {
-    if (row.y < -60 || row.y > CONFIG.H + 20) continue;
+  for (const row of g.rows.concat(R3.ah ? R3.ah.rows : [])) {
+    if (row.y < -40 - LOOK3 * 0.6 || row.y > CONFIG.H + 20) continue;   
     for (const s of row.segs) {
       const sl = s.s, cx = (s.x0 + s.x1) / 2;
       if (sl.type === 'empty') continue;

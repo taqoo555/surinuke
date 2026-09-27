@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v60';
+const VERSION = 'v61';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -42,8 +42,8 @@ const CONFIG = {
   SHOT_RATE: 1.6,                 
 
   
-  GATE_PER_SEC: 7,
-  GATE_POS_PER_SEC: 7,            
+  GATE_PER_SEC: 10,   
+  GATE_POS_PER_SEC: 10,            
   DIV_NEED: 30,                   
   BLUE_MIN: 7, BLUE_MAX: 18,      
   
@@ -54,13 +54,13 @@ const CONFIG = {
   GATE_GROW: 0.25,                
   RED_CAP: 28,                    
   DIV_GATES: false,               
-  RED_GROW: 0.10,                 
+  RED_GROW: 0,                    
   ROW_MAX: 9,                     
-  ROW_EVERY: 1,                      
+  ROW_EVERY: 2,                      
 
   
   LEVEL_GROW: 1.15,                  
-  GRUNT_HP: 3, BRUTE_HP: 45,      
+  GRUNT_HP: 1.5, BRUTE_HP: 45,      
   HYD_HP: 4, HYD_RATE: 0.5,       
   HYD_JET: 1.4,                   
   HYD_WAVE: 380, HYD_BAND: 110,   
@@ -89,7 +89,7 @@ const CONFIG = {
   CUT_T: 1.6,                     
   BOSS_STOP: 250,                 
   EMBER_EVERY: 1.3, EMBER_MIN: 0.55, EMBER_T: 1.0, EMBER_R: 28, EMBER_FRAC: 0.08,    BOSS_RAGE: 20,   
-  BOSS_HP: 1700, CLASH: 25,         
+  BOSS_HP: 1000, CLASH: 25,         
 
   
   
@@ -99,15 +99,16 @@ const CONFIG = {
   GATE_OBST_HP: 0.7,              
   ARMY_W: 120,                    
   
-  ROW_W: [0.35, 0.75, 1.0, 1.0, 1.0, 1.0],   
+  ROW_W: [0.55, 0.65, 1.0, 1.0, 1.0, 1.0],   
   HARD_RATE: 0.5, HARD_ROWS: 1,   
   TUTOR_RED: [30, 8],             
   GUARD_GAP: 30,                  
   OBST_FRONT: 16,                 
+  LANE_BLUE: 0.3,                 
   GUARD_EARLY: 0.3,               
-  GUARD_HP: 0.3,                     
+  GUARD_HP: 0.8,                     
   FINAL_ROWS: 3,                  
-  OPEN_GROW: 0.6,                 
+  OPEN_GROW: 0.3,                 
   SQUAD_AFTER: 1.0,               
   CHUNKS: 6,                      
   WIDE_RATE: 0.28,                
@@ -246,7 +247,7 @@ function loseUnits(g, n, why, x, y) {
   if (n <= 0) return;
   g.N -= n; g.stats[why] += n;
   if (!SIM) { popText(x, y, '−' + n, '#ff5a6a', 18); sfx('lose'); shake(3); }
-  if (g.N <= 0) { g.over = 'fail'; if (!SIM) sfx('fail'); }
+  if (g.N <= 0) { g.over = 'fail'; if (!SIM) { sfx('fail'); flyUnits(g.units); g.units = []; } }   
 }
 
 function addCoins(g, base, x, y) {
@@ -384,7 +385,8 @@ function freeRow(g, c) {
   const W = C.ROW_W;
   
   
-  if (c < 2) return freeRowAt(W[0] + (W[1] - W[0]) * rng());
+  
+  if (c < 2) return { parts: [red(1.0)], cuts: [] };
   return freeRowAt(r < W[0] ? r : r < W[1] ? r : W[1] + (W[2] - W[1]) * rng());
   function freeRowAt(r) {
   if (r < W[0]) return { parts: [red(1.2)], cuts: [] };                                            
@@ -447,8 +449,9 @@ function buildTrack(g) {
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 5, brute: g.level >= 3 && k === 1, mix: mixOf(g) });
       
       
-      const upSlot = k % 3 === 0 ? slotBlue(g, 0.9, true) : k % 3 === 1 ? slotRed(g, 0.6) : slotTire(g, 0.6);
-      if (k % 3 === 0) T.push({ dist: d + G * 0.9 - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === up ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
+      const upBlue = k % 3 === 0 && rng() < C.LANE_BLUE;   
+      const upSlot = upBlue ? slotBlue(g, 0.9, true) : k % 3 === 2 ? slotTire(g, 0.6) : slotRed(g, 0.6);
+      if (upBlue) T.push({ dist: d + G * 0.9 - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === up ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
       const big = rng() < 0.5 ? 0 : 1;
       const lanes = [];
       lanes[up] = upSlot; lanes[mon[big]] = slotRed(g, 0.8); lanes[mon[1 - big]] = slotRed(g);
@@ -462,8 +465,8 @@ function buildTrack(g) {
       
       const plans = shuffle3([
         [slotRed(g, 0.6), 'squad'],   
-        [slotTire(g, C.GUARD_HP), { type: 'mul', v: 2, good: true, hitT: 0 }, 'squad'],   
-        [slotWeaponTire(g), slotBlue(g, 1, true)],
+        [slotRed(g, 1.3), slotRed(g, 0.5), 'squad'],   
+        [slotTire(g, C.GUARD_HP), rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1, true)],
       ]);
       const w0 = d + G * 0.9, len = 60 + G + 150;
       T.push({ dist: w0, kind: 'wall', len });
@@ -626,7 +629,7 @@ function applyGate(g, s) {
   else if (s.type === 'div') g.N = Math.floor(g.N / s.v);
   if (g.N < n0) g.stats.gate += n0 - g.N;
   g.peak = Math.max(g.peak, g.N);
-  if (g.N <= 0) { g.over = 'fail'; if (!SIM) sfx('fail'); }
+  if (g.N <= 0) { g.over = 'fail'; if (!SIM) { sfx('fail'); flyUnits(g.units); g.units = []; } }   
 }
 
 
@@ -668,7 +671,7 @@ function update(g, dt) {
       for (const [t, n] of inO) {
         const lost = Math.min(n, g.N), z = row.segs.find(z => z.s === t), x = z ? (z.x0 + z.x1) / 2 : g.lx;
         t.crashed = true;
-        if (!SIM) { knockFx(x, C.LEADER_Y, Math.min(24, 4 + lost)); shake(8); }
+        if (!SIM) { flyUnits(g.units.filter(u => segAt(row, u.x).s === t)); knockFx(x, C.LEADER_Y, 6); shake(8); }   
         loseUnits(g, lost, 'tire', x, C.LEADER_Y - 30);
         if (g.over) return;
       }
@@ -953,6 +956,12 @@ window.__campaign = function (opt) {
 
 
 let parts = [], texts = [], rings = [], shakeT = 0, shakeA = 0, hitstop = 0, coinsFly = [], weaponBanner = null;
+
+let flyers = [];
+function flyUnits(list) {
+  for (const u of list) { if (flyers.length >= 120) break;
+    flyers.push({ x: u.x, y: u.y, h: 0, vx: rr2(-50, 50), vy: rr2(150, 280), vh: rr2(5, 9), rx: 0, spin: rr2(-12, 12), k: u.d / 11, life: 0, bounced: false }); }
+}
 function burst(x, y, col, n) {
   for (let i = 0; i < n && parts.length < 700; i++) {
     const a = Math.random() * 6.28, s = 40 + Math.random() * 160;
@@ -1061,7 +1070,7 @@ function startRun() {
   game = newRun(meta.level, meta, null);
   
   game.cd = CD_LEN; introT = CD_LEN + 0.6; cdLast = 4;
-  parts = []; texts = []; rings = []; coinsFly = []; weaponBanner = null;
+  parts = []; texts = []; rings = []; coinsFly = []; weaponBanner = null; flyers = [];
   scene = 'play';
 }
 function endRun() {
@@ -1943,6 +1952,24 @@ function render3D(g, sx, sy) {
     d.position.set(wx(u.x), 0.38 * k, wz(u.y) + 0.24 * k); d.updateMatrix(); R.unitTank.setMatrixAt(n, d.matrix);
     n++;
   }
+  
+  const nowF = performance.now(), fd = clamp((nowF - (R.flyT || nowF)) / 1000, 0, 0.05); R.flyT = nowF;
+  for (const f of flyers) {
+    if (!paused) { f.life += fd; f.x += f.vx * fd; f.y += f.vy * fd; f.h += f.vh * fd; f.vh -= 24 * fd; f.rx += f.spin * fd;
+      if (f.h < 0 && f.vh < 0) { if (f.bounced) f.life = 9; else { f.bounced = true; f.h = 0; f.vh *= -0.35; f.vx *= 0.5; f.vy *= 0.4; f.spin *= 0.5; } } }
+    if (n >= 260 || f.life > 2) continue;
+    const k = f.k;
+    d.rotation.set(f.rx, 0, f.rx * 0.4); d.scale.set(k, k, k);
+    const up = R.v.set(0, 1, 0).applyEuler(d.rotation), bx = wx(f.x), by = f.h + 0.3 * k, bz = wz(f.y);
+    d.position.set(bx, by, bz); d.updateMatrix(); R.unitBody.setMatrixAt(n, d.matrix);
+    d.position.set(bx + up.x * 0.42 * k, by + up.y * 0.42 * k, bz + up.z * 0.42 * k); d.updateMatrix(); R.unitHead.setMatrixAt(n, d.matrix);
+    d.position.set(bx + up.x * 0.36 * k, by + up.y * 0.36 * k, bz + up.z * 0.36 * k); d.updateMatrix(); R.unitBrim.setMatrixAt(n, d.matrix);
+    d.scale.set(0, 0, 0); d.updateMatrix(); R.unitStripe.setMatrixAt(n, d.matrix); d.scale.set(k, k, k);
+    d.position.set(bx, by + 0.08 * k, bz + 0.24 * k); d.updateMatrix(); R.unitTank.setMatrixAt(n, d.matrix);
+    n++;
+  }
+  flyers = flyers.filter(f => f.life <= 2);
+  d.rotation.set(0, 0, 0);
   R.unitBody.count = R.unitHead.count = R.unitBrim.count = R.unitStripe.count = R.unitTank.count = n;
   for (const im of [R.unitBody, R.unitHead, R.unitBrim, R.unitStripe, R.unitTank]) im.instanceMatrix.needsUpdate = true;
   
@@ -2069,7 +2096,11 @@ function frame(now) {
       let gdt = dt;
       if (hitstop > 0) { hitstop -= dt; gdt = dt * 0.15; }
       update(g, gdt);
-      if (!(g.cd > 0) && !g.halt) bgY += CONFIG.SCROLL * gdt;   
+      if (!(g.cd > 0) && !g.halt && !g.over) bgY += CONFIG.SCROLL * gdt;   
+      if (g.over === 'fail' && !g.halt) {   
+        const v = CONFIG.SCROLL * Math.max(0, 1 - (g.overT || 0) / 0.7) * gdt;
+        bgY += v; for (const r of g.rows) r.y += v; for (const e of g.enemies) e.y += v; for (const w of g.walls) w.y += v;
+      }
     }
     if (in3D) { render3D(g, sx, sy); drawLabels3D(g); }
     else { drawRoad(); drawRows(g, paused ? 0 : dt); drawWalls(g); drawEnemies(g); drawBullets(g); drawCrowd(g); }

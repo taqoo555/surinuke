@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v42';
+const VERSION = 'v43';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -234,8 +234,9 @@ function slotBlue(g, big, noMul) {
   const k = Math.round(rr(CONFIG.BLUE_MIN, CONFIG.BLUE_MAX) * g.sc * (big || 1));
   return { type: 'add', v: k, good: true, hitT: 0 };
 }
-function slotRed(g, big) {
-  if (rng() < 0.1) return { type: 'div', v: 2, charge: 0, need: CONFIG.DIV_NEED, good: false, hitT: 0 };
+
+function slotRed(g, big, allowDiv) {
+  if (allowDiv && rng() < 0.3) return { type: 'div', v: 2, charge: 0, need: CONFIG.DIV_NEED, good: false, hitT: 0 };
   const k = Math.max(3, Math.round(rr(CONFIG.RED_MIN, CONFIG.RED_MAX) * g.sc * g.ramp * (big || 1)));
   return { type: 'add', v: -k, good: false, hitT: 0 };
 }
@@ -349,10 +350,11 @@ function buildTrack(g) {
       
       const mon = [0, 1, 2].filter(i => i !== up);
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 5, brute: g.level >= 3 && k === 1 });
-      const upSlot = k % 3 === 0 ? (CONFIG.WEAPON_TIRES ? slotWeaponTire(g) : slotBlue(g, 0.8, true)) : k % 3 === 1 ? slotBlue(g, 0.7, true) : slotRed(g, 0.6);
+      
+      const upSlot = k % 3 === 0 ? (CONFIG.WEAPON_TIRES ? slotWeaponTire(g) : slotBlue(g, 0.8, true)) : k % 3 === 1 ? slotRed(g, 0.6) : slotTire(g, 0.6);
       const big = rng() < 0.5 ? 0 : 1;
       const lanes = [];
-      lanes[up] = upSlot; lanes[mon[big]] = slotBlue(g, C.MON_BLUE); lanes[mon[1 - big]] = slotRed(g);
+      lanes[up] = upSlot; lanes[mon[big]] = upSlot.good ? slotRed(g, 0.8) : slotBlue(g, C.MON_BLUE); lanes[mon[1 - big]] = slotRed(g);
       T.push({ dist: d += G * 0.9, kind: 'row', lanes });
       k++;
       continue;
@@ -362,7 +364,7 @@ function buildTrack(g) {
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
       const plans = shuffle3([
         [slotBlue(g, 0.8), 'squad'],
-        [slotRed(g, 1.3), { type: 'mul', v: 2, good: true, hitT: 0 }],
+        [slotRed(g, 1.3, true), { type: 'mul', v: 2, good: true, hitT: 0 }],
         [slotWeaponTire(g), slotBlue(g)],
       ]);
       const w0 = d + G * 0.9, len = 60 + G + 150;
@@ -1468,7 +1470,8 @@ function drawFx3(dt) {
 function render3D(g, sx, sy) {
   const R = R3, T = R.T, d = R.dummy, C = CONFIG;
   
-  R.camX = (R.camX || 0) + (wx(g.lx) * 0.3 - (R.camX || 0)) * 0.08;
+  
+  R.camX = 0;
   R.cam.position.set(R.camX + sx * 0.05, CAM3.y + sy * 0.05, CAM3.z); R.cam.lookAt(R.camX * 0.6 + sx * 0.05, 0, CAM3.look);
   R.tex.offset.y = (bgY / U3) / 4;   
   for (let i = 0; i < 40; i++) {   

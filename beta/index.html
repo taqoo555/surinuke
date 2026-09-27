@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v27';
+const VERSION = 'v28';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -41,7 +41,8 @@ const CONFIG = {
   
   GATE_PER_SEC: 7,
   DIV_NEED: 30,                   
-  BLUE_MIN: 8, BLUE_MAX: 24,      
+  BLUE_MIN: 5, BLUE_MAX: 14,      
+  MOVE_RATE: 0.6,                 
   RED_MIN: 12, RED_MAX: 26,       
   MUL_RATE: 0.15,                 
   GATE_GROW: 0.15,                
@@ -66,7 +67,7 @@ const CONFIG = {
   WIDE_RATE: 0.28,                
   WALL_RATE: 0.22,                
   LANE_RATE: 0.4,                 
-  MON_BLUE: 1.3, MON_ROWS: 2,     
+  MON_BLUE: 1.0, MON_ROWS: 2,     
 
   
   UP_RATE: 0.10, UP_DMG: 0.12, UP_INCOME: 0.15,
@@ -234,9 +235,38 @@ function slotWeaponTire(g) {
   return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0, weapon: true };
 }
 const tireDmg = d => d * CONFIG.TIRE_SHOW * CONFIG.TIRE_BRITTLE;   
+
+function rowSegs(row, t) {
+  const L = CONFIG.ROAD_L, R = CONFIG.ROAD_R, f = row.free;
+  if (f && f.win) {
+    const w = f.win, ww = Math.max(24, w.w + w.wa * Math.sin(t * w.f * 1.3 + w.ph));
+    const cx = clamp(w.cx + w.amp * Math.sin(t * w.f + w.ph), L + ww / 2, R - ww / 2);
+    return [{ x0: L, x1: cx - ww / 2, s: f.base }, { x0: cx - ww / 2, x1: cx + ww / 2, s: w.s }, { x0: cx + ww / 2, x1: R, s: f.base }].filter(z => z.x1 - z.x0 > 1);
+  }
+  if (f && f.split) {
+    const sp = f.split, sx = clamp(sp.x + sp.amp * Math.sin(t * sp.f + sp.ph), L + 50, R - 50);
+    return [{ x0: L, x1: sx, s: sp.a }, { x0: sx, x1: R, s: sp.b }];
+  }
+  if (row.lanes[0].wide) return [{ x0: L, x1: R, s: row.lanes[0] }];
+  return [0, 1, 2].map(i => ({ x0: L + LANE_W * i, x1: L + LANE_W * (i + 1), s: row.lanes[i] }));
+}
+function segAt(row, x) { for (const z of row.segs) if (x < z.x1) return z; return row.segs[row.segs.length - 1]; }
+function rowSlots(row) { return [...new Set(row.segs.map(z => z.s))]; }
 function shuffle3(a) { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 
+
+function freeRow(g, c) {
+  const C = CONFIG, L = C.ROAD_L, R = C.ROAD_R, r = rng();
+  const move = c >= 2 && rng() < C.MOVE_RATE, ph = rr(0, 6.28);
+  const win = (s, w) => ({ base: slotRed(g, 1.2), win: { s, w, cx: rr(L + w / 2 + 10, R - w / 2 - 10), amp: move ? rr(40, 90) : 0,
+                                                     wa: move && rng() < 0.4 ? rr(15, 30) : 0, f: rr(0.8, 1.6), ph } });
+  if (c < 2) return win(slotBlue(g, 1, true), 120);
+  if (r < 0.5) return win(slotBlue(g, 1, true), rr(50, 100));
+  if (r < 0.7) return win({ type: 'mul', v: 2, good: true, hitT: 0 }, rr(36, 60));
+  const a = slotRed(g, 0.6), b = slotRed(g, 1.3), sw = rng() < 0.5;
+  return { split: { a: sw ? a : b, b: sw ? b : a, x: rr(110, 250), amp: move ? rr(30, 70) : 0, f: rr(0.6, 1.2), ph } };
+}
 function buildTrack(g) {
   const C = CONFIG, G = C.TRACK_GAP, T = [];
   let d = 0, theme = null, left = 0, up = 0, k = 0;
@@ -303,9 +333,7 @@ function buildTrack(g) {
       continue;
     }
     
-    const pat = c < 2 ? 1 : r < 0.8 ? 0 : r < 0.9 ? 1 : 2;
-    const lanes = pat === 0 ? [slotRed(g), slotRed(g), slotTire(g)] : pat === 1 ? [slotBlue(g, 1, c < 2), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), slotTire(g)];   
-    T.push({ dist: d += G, kind: 'row', lanes: shuffle3(lanes) });
+    T.push({ dist: d += G, kind: 'row', free: freeRow(g, c) });
   }
   g.ramp = 1; g.chunk = chunks;
   
@@ -328,7 +356,7 @@ function trackFlow(g, dt, scroll) {
   if (!g.boss) g.dist += scroll * dt;
   while (g.ti < g.track.length && g.dist >= g.track[g.ti].dist) {
     const sp = g.track[g.ti++];
-    if (sp.kind === 'row') g.rows.push({ y: -40, lanes: sp.lanes, done: false });
+    if (sp.kind === 'row') { const row = { y: -40, lanes: sp.lanes || [], free: sp.free, done: false }; row.segs = rowSegs(row, g.t); g.rows.push(row); }
     else if (sp.kind === 'wall') g.walls.push({ y: -40, len: sp.len, lane: null });
     else if (sp.kind === 'squad') sp.lanes.forEach((l, k) => spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === 1, sp.soft));
     else if (sp.kind === 'boss') spawnBoss(g);   
@@ -401,24 +429,26 @@ function update(g, dt) {
   
   for (const row of g.rows) {
     row.y += scroll * dt;
-    for (const sl of row.lanes) if (sl.hitT > 0) sl.hitT -= dt;
+    if (!row.done) row.segs = rowSegs(row, g.t);   
+    for (const sl of rowSlots(row)) if (sl.hitT > 0) sl.hitT -= dt;
     if (row.done || row.y < C.LEADER_Y) continue;
     row.done = true;
-    for (const t of row.lanes) if (t.weapon && !t.got && !t.counted) { t.counted = true; g.wMiss++; }
-    const inL = [0, 0, 0]; let tot = 0;
-    for (const u of g.units) { inL[laneOf(u.x)] += u.w; tot += u.w; }
+    for (const t of rowSlots(row)) if (t.weapon && !t.got && !t.counted) { t.counted = true; g.wMiss++; }
     
-    for (let i = 0; i < 3; i++) {
-      const t = row.lanes[i];
-      if (t.type !== 'tire' || t.hp <= 0 || inL[i] <= 0) continue;
-      const lost = Math.min(inL[i], g.N);
+    const inS = new Map(); let tot = 0;
+    for (const u of g.units) { const z = segAt(row, u.x); inS.set(z.s, (inS.get(z.s) || 0) + u.w); tot += u.w; }
+    const cxOf = sl => { const z = row.segs.find(z => z.s === sl); return z ? (z.x0 + z.x1) / 2 : g.lx; };
+    
+    for (const [t, n] of inS) {
+      if (t.type !== 'tire' || t.hp <= 0 || n <= 0) continue;
+      const lost = Math.min(n, g.N), x = cxOf(t);
       t.hp = 0; t.crashed = true;
-      if (!SIM) { burst(laneX(i), row.y, '#555', 40); burst(laneX(i), row.y, '#6fc3ff', 20); shake(10); popText(laneX(i), row.y - 50, 'CRASH!', '#ff5a6a', 22); }
-      loseUnits(g, lost, 'tire', laneX(i), row.y - 30);
+      if (!SIM) { burst(x, row.y, '#555', 40); burst(x, row.y, '#6fc3ff', 20); shake(10); popText(x, row.y - 50, 'CRASH!', '#ff5a6a', 22); }
+      loseUnits(g, lost, 'tire', x, row.y - 30);
       if (g.over) return;
     }
     
-    const hits = [...new Set([0, 1, 2].filter(i => inL[i] > 0 && inL[i] >= tot * 0.2).map(i => row.lanes[i]))]
+    const hits = [...inS].filter(([sl, n]) => n > 0 && n >= tot * 0.2).map(([sl]) => sl)
       .filter(x => x.type !== 'tire' && x.type !== 'empty')
       .sort((a, b) => (a.type !== 'add') - (b.type !== 'add'));   
     hits.forEach((x, k) => {
@@ -456,7 +486,7 @@ function update(g, dt) {
     
     if (!b.dead) for (const row of g.rows) {
       if (row.done) continue;
-      const li = laneOf(b.x), sl = row.lanes[li];
+      const z = segAt(row, b.x), sl = z.s, zx = (z.x0 + z.x1) / 2;
       const crossed = b.py >= row.y - 3 && b.y <= row.y + 1;
       if (sl.type === 'tire' ? Math.abs(b.y - row.y) > 14 && !crossed : !crossed) continue;
       if (sl.type === 'empty' || (sl.type === 'tire' && sl.hp <= 0)) break;
@@ -467,9 +497,9 @@ function update(g, dt) {
         if (sl.hp <= 0) {
           if (sl.weapon && !sl.got) {   
             sl.got = true; g.wGot++; g.wlv = Math.min(WEAPONS.length - 1, g.wlv + 1);
-            if (!SIM) { weaponFx(weapon(g)); burst(laneX(li), row.y, weapon(g).color, 30); sfx('combo'); shake(5); }
+            if (!SIM) { weaponFx(weapon(g)); burst(zx, row.y, weapon(g).color, 30); sfx('combo'); shake(5); }
           }
-          if (!SIM) { burst(laneX(li), row.y, '#666', 26); popText(laneX(li), row.y - 20, 'BREAK!', '#fff', 18); sfx('flip'); shake(4); }
+          if (!SIM) { burst(zx, row.y, '#666', 26); popText(zx, row.y - 20, 'BREAK!', '#fff', 18); sfx('flip'); shake(4); }
         }
       } else shootGate(g, sl, b.x, row.y);
       break;
@@ -572,22 +602,30 @@ function botStep(g, bot, st) {
   const W = weapon(g), shots = g.units.length * C.SHOT_RATE * g.rateMul * W.rate, dps = g.N * g.power * g.rateMul * W.rate * W.dmg;
   const w = g.walls.find(w => w.lane == null && w.y < C.LEADER_Y && w.y > C.LEADER_Y - 420);
   const rows = g.rows.filter(r => !r.done && r.y < C.LEADER_Y && (w ? r.y >= w.y - w.len - 5 : true)).sort((a, b) => b.y - a.y).slice(0, w ? 3 : 1);
-  let best = laneOf(g.lx), bestV = -1e9;
-  for (let i = 0; i < 3; i++) {
-    let v = i === laneOf(g.lx) ? 3 : -Math.abs(i - laneOf(g.lx)) * 2;
+  
+  const fw = formW(g), cands = [0, 1, 2].map(laneX);
+  if (rows[0] && !w) for (const z of rows[0].segs) cands.push(clamp((z.x0 + z.x1) / 2, C.ROAD_L + fw / 2, C.ROAD_R - fw / 2));
+  let best = g.lx, bestV = -1e9;
+  for (const x of cands) {
+    let v = -Math.abs(x - g.lx) * 0.02;
     
     let hp = 0, near = 1e9;
-    for (const e of g.enemies) if (e.y < C.LEADER_Y && e.y > -40 && laneOf(e.x) === i) { hp += e.hp; near = Math.min(near, (C.LEADER_Y - e.y) / (C.SCROLL + C.ENEMY_VY)); }
+    for (const e of g.enemies) if (e.y < C.LEADER_Y && e.y > -40 && Math.abs(e.x - x) < fw / 2 + 8) { hp += e.hp; near = Math.min(near, (C.LEADER_Y - e.y) / (C.SCROLL + C.ENEMY_VY)); }
     if (hp > 0) { const left = hp - dps * near * 0.8; v += left > 0 ? -1.5 * left / (C.GRUNT_HP * g.mul) : 6; }
     let used = 0;
     for (const row of rows) {
       const t = Math.max(0, (C.LEADER_Y - row.y) / C.SCROLL - used);
-      v += projVal(g, row.lanes[i], t, shots, dps);
+      const share = new Map();
+      for (const z of row.segs) { const o = Math.max(0, Math.min(z.x1, x + fw / 2) - Math.max(z.x0, x - fw / 2)) / fw; if (o > 0) share.set(z.s, (share.get(z.s) || 0) + o); }
+      for (const [sl, o] of share) {
+        if (sl.type === 'tire') v += projVal(g, sl, t, shots * o, dps * o) * (projVal(g, sl, t, shots * o, dps * o) < 0 ? o : 1);
+        else if (o >= 0.2) v += projVal(g, sl, t, shots * o, dps * o);
+      }
       used += t;
     }
-    if (v > bestV) { bestV = v; best = i; }
+    if (v > bestV) { bestV = v; best = x; }
   }
-  g.target = laneX(best);
+  g.target = best;
 }
 function runSim(bot, level, m, seed) {
   SIM = true;
@@ -834,12 +872,11 @@ function drawWalls(g) {
 }
 function drawRows(g, dt) {
   for (const row of g.rows) {
-    if (row.lanes[0].wide) { drawGateSide(CONFIG.ROAD_L, CONFIG.ROAD_R, row.y, row.lanes[0], false, dt); continue; }
-    for (let i = 0; i < 3; i++) {
-      const sl = row.lanes[i], x0 = CONFIG.ROAD_L + LANE_W * i, x1 = x0 + LANE_W, cx = (x0 + x1) / 2;
+    for (const z of row.segs) {
+      const sl = z.s, cx = (z.x0 + z.x1) / 2;
       if (sl.type === 'empty') continue;
       if (sl.type === 'tire') { drawTire(g, sl, cx, row.y); continue; }
-      drawGateSide(x0, x1, row.y, sl, row.done && !(row.picked || []).includes(sl), dt);
+      drawGateSide(z.x0, z.x1, row.y, sl, row.done && !(row.picked || []).includes(sl), dt);
     }
   }
 }
@@ -879,7 +916,7 @@ function drawGateSide(x0, x1, y, s, taken, dt) {
     txt('÷2', cx, cy - 4, 22, '#fff');
     ctx.fillStyle = '#000a'; ctx.fillRect(x0 + 8, cy + 12, x1 - x0 - 16, 5);
     ctx.fillStyle = '#3fa9ff'; ctx.fillRect(x0 + 8, cy + 12, (x1 - x0 - 16) * Math.min(1, s.charge / s.need), 5);
-  } else txt(gateLabel(s), cx, cy, s.hitT > 0 ? 25 : 22, '#fff');
+  } else { const fs = clamp((x1 - x0) * 0.4, 12, 22); txt(gateLabel(s), cx, cy, s.hitT > 0 ? fs + 3 : fs, '#fff'); }   
 }
 function drawEnemies(g) {
   for (const e of g.enemies) {

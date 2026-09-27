@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v24';
+const VERSION = 'v25';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -237,9 +237,9 @@ function buildTrack(g) {
     const r = rng();
     if (c >= 2 && r < C.WIDE_RATE) {
       
+      T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows: rows + 1, cols: 5, brute: g.level >= 3 && rng() < 0.4 });
       const w = slotRed(g, 1.5); w.wide = true;
-      T.push({ dist: d += G, kind: 'row', lanes: [w, w, w] });
-      T.push({ dist: d += 90, kind: 'squad', lanes: [0, 1, 2], rows: rows + 1, cols: 5, brute: g.level >= 3 && rng() < 0.4 });
+      T.push({ dist: d += 170, kind: 'row', lanes: [w, w, w] });
       continue;
     }
     T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: [ri(0, 2)], rows, cols, soft: c < 2 });

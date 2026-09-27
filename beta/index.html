@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v19';
+const VERSION = 'v20';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -108,7 +108,9 @@ const CONFIG = {
   BOTH_RATE: 0.25,                
   
   
-  GATE_HIT: 0.5,                  
+  
+  GATE_HIT: 2.5,   
+  WIDE_ARMY: 0.2,                 
   SHOT_RATE: 1.6,                 
   DIV_NEED: 30,                   
   
@@ -332,7 +334,7 @@ function gateLabel(sd) {
 
 function shootGate(g, sd, b, x, y) {
   sd.hitT = 0.08;
-  const add = CONFIG.GATE_HIT * (b.flame ? 0.25 : b.rocket ? 2 : b.pellet ? 0.5 : 1);
+  const add = CONFIG.GATE_HIT * Math.sqrt(10 / Math.max(10, g.N)) * (b.flame ? 0.25 : b.rocket ? 2 : b.pellet ? 0.5 : 1);
   if (sd.type === 'add') {
     const before = sd.v;
     sd.v = Math.min(sd.max, sd.v + add);
@@ -604,9 +606,16 @@ function buildTrack(g) {
     
     T.push({ dist: d += (c === 0 ? 80 : G * 0.8), kind: 'squad', lanes: two && c >= 2 ? [l1, l2] : [l1], cols: Math.min(6, 1 + c),
              rows: (c < 2 ? 1 : C.SQUAD_ROWS) + Math.floor(c / 3) + Math.floor((g.stage - 1) / 2) });
-    const pat = c < 2 ? 1 : ri(0, 2);
-    const lanes = pat === 0 ? [slotRed(g), slotRed(g), slotTire(g)] : pat === 1 ? [slotBlue(g), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), slotTire(g)];
-    T.push({ dist: d += G, kind: 'row', lanes: shuffle3(lanes) });
+    
+    const r = rng();
+    if (c >= 2 && r < 0.35) {
+      const w = slotRed(g); w.v = Math.round(w.v * 2); w.wide = true;   
+      T.push({ dist: d += G, kind: 'row', lanes: [w, w, w] });
+    } else {
+      const pat = c < 2 ? 1 : r < 0.65 ? 0 : r < 0.85 ? 1 : 2;
+      const lanes = pat === 0 ? [slotRed(g), slotRed(g), slotTire(g)] : pat === 1 ? [slotBlue(g), slotRed(g), slotRed(g)] : [slotRed(g), slotBlue(g), slotTire(g)];
+      T.push({ dist: d += G, kind: 'row', lanes: shuffle3(lanes) });
+    }
     if (c % 3 === 2) {
       const open = ri(0, 2);
       T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : slotTire(g)) });
@@ -615,7 +624,7 @@ function buildTrack(g) {
   }
   g.ramp = 1; g.chunk = chunks;
   
-  for (let r = 0; r < 3; r++) T.push({ dist: d += G * 0.7, kind: 'row', lanes: [0, 1, 2].map(() => slotTire(g, 0.4 + 0.15 * r)) });
+  for (let r = 0; r < 3; r++) T.push({ dist: d += G * 0.7, kind: 'row', lanes: [0, 1, 2].map(() => slotTire(g, 0.25 + 0.1 * r)) });   
   T.push({ dist: d += G, kind: 'boss' });
   return T;
 }
@@ -632,7 +641,11 @@ function trackFlow(g, dt, scroll) {
   if (!g.boss) g.dist += scroll * dt;
   while (g.ti < g.track.length && g.dist >= g.track[g.ti].dist) {
     const sp = g.track[g.ti];
-    if (sp.kind === 'row') { g.rows.push({ y: -40, lanes: sp.lanes, done: false }); g.ti++; }
+    if (sp.kind === 'row') {
+      
+      if (sp.lanes[0].wide && !sp.lanes[0].scaled) { sp.lanes[0].v -= Math.round(g.N * CONFIG.WIDE_ARMY); sp.lanes[0].scaled = true; }
+      g.rows.push({ y: -40, lanes: sp.lanes, done: false }); g.ti++;
+    }
     else if (sp.kind === 'squad') { for (const l of sp.lanes) spawnSquad(g, l, sp.rows, sp.cols); g.ti++; }
     else if (sp.kind === 'boss') {
       spawnBoss(g); g.ti++;   
@@ -699,7 +712,7 @@ function update(g, dt) {
       
       const inL = [0, 0, 0]; let tot = 0;
       for (const u of g.units) { inL[laneOf(u.x)] += u.w; tot += u.w; }
-      const hits = [0, 1, 2].filter(i => inL[i] > 0 && inL[i] >= tot * 0.2).map(i => row.lanes[i])
+      const hits = [...new Set([0, 1, 2].filter(i => inL[i] > 0 && inL[i] >= tot * 0.2).map(i => row.lanes[i]))]   
         .filter(x => x.type !== 'tire' && x.type !== 'empty')
         .sort((a, b) => (a.type === 'mul' || a.type === 'div') - (b.type === 'mul' || b.type === 'div'));
       hits.forEach((x, k) => {
@@ -1318,6 +1331,10 @@ function drawRoad() {
 }
 function drawRows(g, dt) {
   for (const row of g.rows) {
+    if (row.lanes[0].wide && row.lanes[0] === row.lanes[1]) {   
+      drawGateSide(CONFIG.ROAD_L, CONFIG.ROAD_R, row.y, row.lanes[0], false, dt);
+      continue;
+    }
     for (let i = 0; i < 3; i++) {
       
       const sl = row.lanes[i], x0 = CONFIG.ROAD_L + LANE_W * i, x1 = x0 + LANE_W, cx = (x0 + x1) / 2;

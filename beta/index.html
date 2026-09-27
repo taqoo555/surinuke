@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v56';
+const VERSION = 'v57';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -51,13 +51,19 @@ const CONFIG = {
   RED_MIN: 16, RED_MAX: 30,       
   MUL_RATE: 0.15,                 
   GATE_GROW: 0.25,                
+  RED_CAP: 28,                    
+  DIV_GATES: false,               
   RED_GROW: 0.10,                 
+  ROW_MAX: 9,                     
   ROW_EVERY: 1,                      
 
   
-  LEVEL_GROW: 1.10,               
-  GRUNT_HP: 1.6, BRUTE_HP: 45,      
-  SPLIT_HP: 6, BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
+  LEVEL_GROW: 1.12,                  
+  GRUNT_HP: 2, BRUTE_HP: 45,      
+  HYD_HP: 5, HYD_R: 70,           
+  GRAB_HP: 8, GRAB_BITE: 4,       
+  LAVA_HP: 14, LAVA_BITE: 5,      
+  SMOKE_HITS: 10,                 
   ENEMY_VY: 10,                   
   
   HOMING: 45, CHASE_RANGE: 150,
@@ -73,6 +79,8 @@ const CONFIG = {
   WEAPON_TIRES: false,
   WEAPON_HP: 200, WEAPON_FIRST: 0.5,                
 
+  STAGE1_HP: 0.7,                 
+  BIG_BOSS: 1.4,                  
   BOSS_HP: 800, CLASH: 25,         
 
   
@@ -266,8 +274,10 @@ function slotBlue(g, big, noMul) {
 }
 
 function slotRed(g, big, allowDiv) {
-  if (allowDiv && rng() < 0.3) return { type: 'div', v: 2, charge: 0, need: CONFIG.DIV_NEED, good: false, hitT: 0 };
-  const k = Math.max(3, Math.round(rr(CONFIG.RED_MIN, CONFIG.RED_MAX) * (1 + CONFIG.RED_GROW * (g.level - 1)) * g.ramp * (big || 1)));   
+  
+  if (allowDiv && CONFIG.DIV_GATES && rng() < 0.3) return { type: 'div', v: 2, charge: 0, need: CONFIG.DIV_NEED, good: false, hitT: 0 };
+  
+  const k = Math.max(3, Math.min(CONFIG.RED_CAP, Math.round(rr(CONFIG.RED_MIN, CONFIG.RED_MAX) * (1 + CONFIG.RED_GROW * (g.level - 1)) * g.ramp * (big || 1))));
   return { type: 'add', v: -k, good: false, hitT: 0 };
 }
 
@@ -328,12 +338,20 @@ const STAGES = [
   { name: 'TIRE FIELD',   lane: 0.10, wall: 0.10, wide: 0.10, tire: 0.45, move: 0.5, scene: 'bridge' },
 ];
 
-const MIX = [{ split: 0, ball: 0 }, { split: 0.15, ball: 0.5 }, { split: 0.3, ball: 0.2 }, { split: 0.25, ball: 0.25 }, { split: 0.5, ball: 0.15 }, { split: 0.2, ball: 0.3 }];
+const MIX = [{ hydrant: 0, grab: 0, lava: 0 }, { hydrant: 0.5, grab: 0, lava: 0 }, { hydrant: 0.3, grab: 0.4, lava: 0 },
+             { hydrant: 0.3, grab: 0, lava: 0.4 }, { hydrant: 0.5, grab: 0.3, lava: 0.2 }, { hydrant: 0.3, grab: 0.3, lava: 0.3 }];
+
+const SMOKE = [0, 0, 0.25, 0.25, 0.25, 0.3];
 function stageOf(level) { return STAGES[(level - 1) % STAGES.length]; }
 function mixOf(g) {
   if (g.level < 2) return null;
-  const m = MIX[(g.level - 1) % MIX.length];
-  return { split: rng() < m.split ? 1 : 0, ball: rng() < m.ball ? 2 : 0 };
+  const m = MIX[(g.level - 1) % MIX.length], k = g.level > 6 ? 1.2 : 1;
+  return { hydrant: rng() < m.hydrant * k ? 1 : 0, grab: rng() < m.grab * k ? 1 : 0, lava: rng() < m.lava * k ? 1 : 0 };
+}
+function smokeRow(g, fr) {
+  if (rng() >= SMOKE[(g.level - 1) % SMOKE.length] * (g.level > 6 ? 1.2 : 1)) return;
+  const gates = fr.parts.filter(p => p.type === 'add' || p.type === 'mul');
+  if (gates.length) gates[ri(0, gates.length - 1)].smoke = CONFIG.SMOKE_HITS;
 }
 
 function freeRow(g, c) {
@@ -407,7 +425,7 @@ function buildTrack(g) {
     
     const G = C.TRACK_GAP * rr(0.8, 1.15);
     
-    const rows = c < 2 ? 1 + og : 1 + Math.floor(c / 3) + Math.min(6, Math.floor((g.level - 1) / C.ROW_EVERY));
+    const rows = c < 2 ? 1 + og : 1 + Math.floor(c / 3) + Math.min(C.ROW_MAX, Math.floor((g.level - 1) / C.ROW_EVERY));   
     const cols = c < 2 ? Math.min(6, c + 1 + og) : Math.min(6, 1 + c + Math.floor(g.level / 3));
     if (left <= 0) {   
       const t = rng();
@@ -472,6 +490,7 @@ function buildTrack(g) {
     const sl = fr.guard != null ? (fr.guard + ri(1, 2)) % 3 : fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2);
     T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? C.HARD_ROWS : 0), cols: strong ? Math.max(cols, 5) : cols, brute: strong && g.level >= 3, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
     if (fr.guard != null) T.push({ dist: d + G * 0.55, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
+    if (c >= 2 && !tut) smokeRow(g, fr);
     T.push({ dist: d += G, kind: 'row', free: fr });
     if (c >= 1 && rng() < C.FILLER) T.push({ dist: d + G * 0.45, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });   
   }
@@ -488,7 +507,7 @@ function buildTrack(g) {
 }
 
 function spawnSquad(g, lane, rows, cols, brute, soft, mix) {
-  const C = CONFIG, em = g.mul * (soft ? 0.5 : 1), x0 = laneX(lane) - LANE_W * 0.4;
+  const C = CONFIG, em = g.mul * (soft ? 0.5 : 1) * (g.level === 1 ? C.STAGE1_HP : 1), x0 = laneX(lane) - LANE_W * 0.4;   
   cols = cols || 6;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++)
     g.enemies.push({ kind: 'grunt', lane, x: x0 + (c + 0.5) * (LANE_W * 0.8 / cols) + rr(-2, 2), y: -30 - r * 19, r: 9,
@@ -496,14 +515,14 @@ function spawnSquad(g, lane, rows, cols, brute, soft, mix) {
       hk: rr(0.6, 1.2), wob: rr(0.5, 2.5), wf: rr(1.2, 3), ph: rr(0, 6.28) });
   if (brute) g.enemies.push({ kind: 'brute', lane, x: laneX(lane), y: -44 - rows * 19, r: 19, hp: C.BRUTE_HP * em, max: C.BRUTE_HP * em, vy: C.ENEMY_VY, bite: 6, hk: 0.5 });
   
-  if (mix && mix.split) g.enemies.push({ kind: 'split', lane, x: laneX(lane) + rr(-15, 15), y: -40 - rows * 19 - (brute ? 30 : 0), r: 13, hp: C.SPLIT_HP * em, max: C.SPLIT_HP * em, vy: C.ENEMY_VY, bite: 3, hk: 0.8, ph: rr(0, 6.28) });
-  if (mix && mix.ball) for (let k = 0; k < mix.ball; k++)
-    g.enemies.push({ kind: 'ball', lane, x: laneX(lane) + rr(-20, 20), y: -10 + k * 30, r: 8, hp: C.BALL_HP * em, max: C.BALL_HP * em, vy: C.ENEMY_VY + C.BALL_VY, vx: (rng() < 0.5 ? -1 : 1) * C.BALL_VX, bite: 2, hk: 0, ph: rr(0, 6.28) });
+  if (mix && mix.hydrant && rows * cols >= 6) g.enemies.push({ kind: 'hydrant', lane, x: laneX(lane), y: -30 - Math.floor(rows / 2) * 19 - 4, r: 10, hp: C.HYD_HP * em, max: C.HYD_HP * em, vy: 0, bite: 0, hk: 0, fixed: true });
+  if (mix && mix.grab) g.enemies.push({ kind: 'grab', lane, x: laneX(lane) + rr(-10, 10), y: -44 - rows * 19 - (brute ? 30 : 0), r: 12, hp: C.GRAB_HP * em, max: C.GRAB_HP * em, vy: C.ENEMY_VY, bite: C.GRAB_BITE, hk: 1.3, ph: rr(0, 6.28), cap: 0 });
+  if (mix && mix.lava) g.enemies.push({ kind: 'lava', lane, x: laneX(lane) + rr(-10, 10), y: -50 - rows * 19 - (brute ? 30 : 0) - (mix.grab ? 30 : 0), r: 15, hp: C.LAVA_HP * em, max: C.LAVA_HP * em, vy: C.ENEMY_VY, bite: C.LAVA_BITE, hk: 0.7, ph: rr(0, 6.28) });
 }
 
-function splitFlame(g, e) {
-  const C = CONFIG, hp = C.GRUNT_HP * g.mul * 0.6;
-  for (const vx of [-90, 0, 90]) g.enemies.push({ kind: 'grunt', lane: e.lane, x: e.x + vx * 0.1, y: e.y - (vx ? 0 : 8), r: 8, hp, max: hp, vy: C.ENEMY_VY, vx, bite: 1, hk: rr(0.6, 1.2), ph: rr(0, 6.28) });
+function hydrantBurst(g, e) {
+  for (const o of g.enemies) if (o !== e && o.hp > 0 && o.kind !== 'hydrant' && Math.hypot(o.x - e.x, o.y - e.y) < CONFIG.HYD_R) kill(g, o);
+  if (!SIM) { if (R3.on) { fxSplash(e.x, e.y, 60); fxSteam(e.x, e.y, 14); } else burst(e.x, e.y, '#6fc3ff', 40); popText(e.x, e.y - 30, 'SPLASH!', '#bfefff', 20); sfx('flip'); shake(5); }
 }
 function trackFlow(g, dt, scroll) {
   if (!g.track) { g.track = buildTrack(g); g.trackEnd = g.track[g.track.length - 1].dist; }
@@ -516,9 +535,14 @@ function trackFlow(g, dt, scroll) {
     else if (sp.kind === 'boss') spawnBoss(g);   
   }
 }
+
+function bossKindOf(level) {
+  if (level % 6 === 0) return (level / 6) % 2 === 1 ? 'majin' : 'dragon';
+  return stageOf(level).scene === 'bridge' ? 'truck' : 'house';
+}
 function spawnBoss(g) {
   
-  const hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? 0.6 : 1);
+  const hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? 0.6 : 1) * (g.level % 6 === 0 ? CONFIG.BIG_BOSS : 1);   
   g.boss = { x: 180, y: -60, r: 46, hp, max: hp, t: 0, flash: 0 };
   if (!SIM) { sfx('boss'); shake(6); }
 }
@@ -536,6 +560,7 @@ function shootGate(g, sd, x, y) {
   sd.bud = Math.min(CONFIG.GATE_PER_SEC, sd.bud + (g.t - sd.bt) * CONFIG.GATE_PER_SEC); sd.bt = g.t;
   if (sd.bud < 1) return;
   sd.bud -= 1;
+  if (sd.smoke > 0) { if (--sd.smoke === 0 && !SIM) { if (R3.on) fxSteam(x, y, 12); popText(x, y - 28, gateLabel(sd), '#fff', 18); } return; }   
   if (sd.type === 'add') {
     const before = sd.v;
     sd.v += 1;
@@ -678,22 +703,29 @@ function update(g, dt) {
   const R = g.cR;
   for (const e of g.enemies) {
     
-    const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth;
-    e.y += (scroll + e.vy + (near ? C.SURGE : 0)) * dt;
+    if (e.fixed) { e.y += scroll * dt; if (e.flash > 0) e.flash -= dt; continue; }   
+    const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth && !(e.grabT > 0);
+    if (e.grabT > 0) e.grabT -= dt;
+    const slow = e.kind === 'lava' ? 0.35 + 0.65 * e.hp / e.max : 1;   
+    e.y += (scroll + (e.vy + (near ? C.SURGE : 0)) * slow) * dt;
     if (near) {
       e.x += clamp((g.lx - e.x) * 1.5, -C.HOMING, C.HOMING) * (e.hk || 1) * C.SURGE_HOME * dt;
       e.x += Math.sin(g.t * 9 + (e.ph || 0) * 3) * 38 * dt;   
     }
     if (e.wob) e.x += Math.cos(g.t * e.wf + e.ph) * e.wob * e.wf * dt;
-    if (e.vx) { e.x += e.vx * dt; if (e.kind !== 'ball') e.vx *= Math.pow(0.02, dt); }   
-    const x0 = e.x;
     e.x = clamp(e.x, C.ROAD_L + 6, C.ROAD_R - 6);
     if (g.walls.some(w => e.y <= w.y && e.y >= w.y - w.len))
       e.x = clamp(e.x, C.ROAD_L + LANE_W * e.lane + e.r + 4, C.ROAD_L + LANE_W * (e.lane + 1) - e.r - 4);
-    if (e.kind === 'ball' && e.x !== x0) e.vx = e.x > x0 ? Math.abs(e.vx) : -Math.abs(e.vx);
     if (e.hp > 0 && e.y > C.LEADER_Y - 12 - e.r && e.y < C.LEADER_Y + g.cDepth + e.r && Math.abs(e.x - g.lx) < R + e.r) {
       const u = g.units.find(u => Math.hypot(u.x - e.x, u.y - e.y) < e.r + u.d / 2);
-      if (u) {
+      if (u && e.kind === 'grab') {   
+        const n = Math.min(g.N, e.bite);
+        g.N -= n; g.stats.enemy += n; e.cap += n;
+        e.r = Math.min(26, 12 + Math.sqrt(e.cap) * 2.2); e.hp += n * C.GRUNT_HP * g.mul; e.max += n * C.GRUNT_HP * g.mul;
+        e.y -= 110; e.grabT = 1.2;
+        if (!SIM) { popText(e.x, e.y + 60, '−' + n, '#ff5a6a', 18); sfx('lose'); shake(3); }
+        if (g.N <= 0) { g.over = 'fail'; if (!SIM) sfx('fail'); return; }
+      } else if (u) {
         const bite = Math.ceil(e.bite * e.hp / e.max);
         kill(g, e, true);
         loseUnits(g, bite, 'enemy', e.x, e.y);
@@ -740,14 +772,19 @@ function hurt(g, e, d) {
     if (!SIM && rng() < 0.2) popText(e.x + rr(-20, 20), e.y + rr(-10, 10), Math.round(d), '#ffd84a', 10);
     return;
   }
-  e.hp -= d;
+  e.hp -= d; e.flash = 0.06;
   if (e.hp <= 0) kill(g, e);
 }
 
 function kill(g, e, contact) {
   if (e.dead) return;
   e.dead = true; e.hp = 0;
-  if (!contact) { g.kills++; addCoins(g, ({ brute: 6, split: 2, ball: 2 }[e.kind] || 1) * (1 + Math.floor(g.level / 2)), e.x, e.y); if (e.kind === 'split') splitFlame(g, e); }
+  if (!contact) { g.kills++; addCoins(g, ({ brute: 6, grab: 3, lava: 4, hydrant: 2 }[e.kind] || 1) * (1 + Math.floor(g.level / 2)), e.x, e.y); }
+  if (e.kind === 'hydrant') hydrantBurst(g, e);
+  if (e.kind === 'grab' && e.cap > 0 && !contact) {   
+    g.N += e.cap; g.peak = Math.max(g.peak, g.N);
+    if (!SIM) { popText(e.x, e.y - 24, '+' + e.cap, '#6fc3ff', 22); sfx('gate'); }
+  }
   if (!SIM && R3.on) { fxSteam(e.x, e.y, e.kind === 'brute' ? 8 : 4); fxSparks(e.x, e.y, e.kind === 'brute' ? 12 : 5); sfx('kill'); if (e.kind === 'brute') shake(4); }   
   else if (!SIM) { burst(e.x, e.y, '#ffffff', e.kind === 'brute' ? 14 : 5); burst(e.x, e.y, e.kind === 'brute' ? '#ff7a1a' : '#ffb347', e.kind === 'brute' ? 16 : 5);   
    sfx('kill'); if (e.kind === 'brute') shake(4); }
@@ -759,6 +796,7 @@ let SIM = false;
 function projVal(g, sl, t, shots, dps) {
   const C = CONFIG, tr = Math.min(t, C.RANGE / C.SCROLL), grow = Math.min(C.GATE_PER_SEC, shots) * tr * 0.6;   
   if (sl.type === 'empty') return 0;
+  if (sl.smoke > 0 && sl.smoke > Math.min(C.GATE_PER_SEC, shots) * tr * 0.6) return 0;   
   if (sl.type === 'mul') return g.N * (sl.v - 1);
   if (sl.type === 'div') return sl.charge + grow >= sl.need ? g.N : -g.N / 2;
   if (sl.type === 'add') return sl.v + grow;
@@ -1095,7 +1133,7 @@ function drawTire(g, sl, cx, y) {
   }
 }
 function drawGateSide(x0, x1, y, s, taken, dt) {
-  const col = s.good ? '#3fa9ff' : '#ff4d5e';
+  const col = s.smoke > 0 ? '#8a8f9c' : s.good ? '#3fa9ff' : '#ff4d5e';
   if (s.hitT > 0) s.hitT -= dt;
   
   const H = 46, top = y - H;
@@ -1111,12 +1149,12 @@ function drawGateSide(x0, x1, y, s, taken, dt) {
     txt('÷2', cx, cy - 4, 22, '#fff');
     ctx.fillStyle = '#000a'; ctx.fillRect(x0 + 8, cy + 12, x1 - x0 - 16, 5);
     ctx.fillStyle = '#3fa9ff'; ctx.fillRect(x0 + 8, cy + 12, (x1 - x0 - 16) * Math.min(1, s.charge / s.need), 5);
-  } else { const fs = clamp((x1 - x0) * 0.4, 12, 22); txt(gateLabel(s), cx, cy, s.hitT > 0 ? fs + 3 : fs, '#fff'); }   
+  } else { const fs = clamp((x1 - x0) * 0.4, 12, 22); txt(s.smoke > 0 ? '?' : gateLabel(s), cx, cy, s.hitT > 0 ? fs + 3 : fs, '#fff'); }   
 }
 function drawEnemies(g) {
   for (const e of g.enemies) {
     const br = e.kind === 'brute';
-    ctx.fillStyle = e.kind === 'split' ? '#b04dff' : e.kind === 'ball' ? '#ffd21a' : br ? '#ff8a3a' : '#ff4d5e';
+    ctx.fillStyle = e.kind === 'hydrant' ? '#d8262a' : e.kind === 'grab' ? '#a3122e' : e.kind === 'lava' ? '#' + lavaCol(e).toString(16).padStart(6, '0') : br ? '#ff8a3a' : '#ff4d5e';
     ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 6.28); ctx.fill();
     ctx.fillStyle = br ? '#ffc08a' : '#ff9aa4';   
     ctx.beginPath(); ctx.moveTo(e.x - e.r * 0.8, e.y - e.r * 0.4); ctx.lineTo(e.x - e.r * 0.6, e.y - e.r * 1.3); ctx.lineTo(e.x - e.r * 0.2, e.y - e.r * 0.8); ctx.fill();
@@ -1488,6 +1526,19 @@ function init3D() {
       return gr;
     });
     const walls = pool(() => new T.Mesh(box, M(0x0d0f16)));
+    const matSmoke = M(0x8a8f9c, { transparent: true, opacity: 0.8 }), matSmokeF = M(0x6a6f7c);   
+    
+    const hydrants = pool(() => {
+      const gr = new T.Group(), red = M(0xd8262a);
+      const base = new T.Mesh(new T.CylinderGeometry(0.42, 0.48, 0.18, 12), M(0x9a1c1f)); base.position.y = 0.09; gr.add(base);
+      const body = new T.Mesh(new T.CylinderGeometry(0.32, 0.36, 1.1, 12), red); body.position.y = 0.72; gr.add(body);
+      const cap = new T.Mesh(new T.SphereGeometry(0.34, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), red); cap.position.y = 1.27; gr.add(cap);
+      const knob = new T.Mesh(new T.CylinderGeometry(0.1, 0.12, 0.16, 8), M(0xe8c23a)); knob.position.y = 1.62; gr.add(knob);
+      for (const sx of [-1, 1]) { const nz = new T.Mesh(new T.CylinderGeometry(0.13, 0.13, 0.28, 10), M(0xe8c23a)); nz.rotation.z = Math.PI / 2; nz.position.set(sx * 0.42, 0.85, 0); gr.add(nz); }
+      const front = new T.Mesh(new T.CylinderGeometry(0.16, 0.16, 0.22, 10), M(0xe8c23a)); front.rotation.x = Math.PI / 2; front.position.set(0, 0.7, 0.4); gr.add(front);
+      gr.traverse(o => { if (o.isMesh) o.castShadow = true; }); gr.userData = { body };
+      return gr;
+    });
     
     
     
@@ -1536,6 +1587,62 @@ function init3D() {
       const f = new T.Mesh(new T.ConeGeometry(0.45 * fs, 1.4 * fs, 8), B(col)); f.position.set(fx, fy, fz); boss.add(f); bossFlames.push({ f, ph: fx * 3 + fy });
     }
     boss.visible = false; scene3.add(boss);
+    
+    boss.userData = { flash: bossBody.material, base: 0xe8c9a0, flames: bossFlames };
+    const mkFlames = (gr, list) => list.map(([fx, fy, fz, fs, col]) => { const f = new T.Mesh(new T.ConeGeometry(0.45 * fs, 1.4 * fs, 8), B(col)); f.position.set(fx, fy, fz); gr.add(f); return { f, ph: fx * 3 + fy + fz }; });
+    
+    const truck = new T.Group();
+    const tankMat = M(0xd6dbe4);
+    const tank = new T.Mesh(new T.CylinderGeometry(0.75, 0.75, 2.6, 16), tankMat); tank.rotation.x = Math.PI / 2; tank.position.set(0, 1.05, -0.35); truck.add(tank);
+    for (const tz of [-1.65, 0.95]) { const endc = new T.Mesh(new T.CylinderGeometry(0.76, 0.76, 0.08, 16), M(0x9aa3b0)); endc.rotation.x = Math.PI / 2; endc.position.set(0, 1.05, tz); truck.add(endc); }
+    const stripe = new T.Mesh(new T.CylinderGeometry(0.77, 0.77, 0.3, 16), M(0xff8a1a)); stripe.rotation.x = Math.PI / 2; stripe.position.set(0, 1.05, -0.35); truck.add(stripe);
+    const cabT = new T.Mesh(new T.BoxGeometry(1.5, 1.2, 0.9), M(0xc23a2a)); cabT.position.set(0, 0.95, 1.45); truck.add(cabT);
+    const glass = new T.Mesh(new T.BoxGeometry(1.3, 0.45, 0.05), M(0x2a3a50)); glass.position.set(0, 1.25, 1.91); truck.add(glass);
+    const chassis = new T.Mesh(new T.BoxGeometry(1.4, 0.25, 3.8), M(0x2a2d34)); chassis.position.set(0, 0.35, 0.15); truck.add(chassis);
+    for (const wz2 of [-1.3, -0.5, 1.4]) for (const wx5 of [-0.7, 0.7]) { const wh = new T.Mesh(new T.CylinderGeometry(0.32, 0.32, 0.25, 12), M(0x15171c)); wh.rotation.z = Math.PI / 2; wh.position.set(wx5, 0.32, wz2); truck.add(wh); }
+    const truckFlames = mkFlames(truck, [[0, 2.3, -0.4, 1.3, 0xff6a1a], [-0.45, 2.0, -1.2, 0.9, 0xff3b1a], [0.5, 2.0, 0.4, 1.0, 0xff7a1a], [0, 2.6, -0.3, 0.7, 0xffc21a], [0.8, 1.2, -0.9, 0.5, 0xffc21a]]);
+    truck.userData = { flash: tankMat, base: 0xd6dbe4, flames: truckFlames };
+    
+    const majin = new T.Group();
+    const mBodyMat = B(0xff5a14);
+    const mBody = new T.Mesh(new T.ConeGeometry(1.25, 3.4, 12), mBodyMat); mBody.position.y = 1.7; majin.add(mBody);
+    const mBelly = new T.Mesh(new T.ConeGeometry(0.75, 2.2, 10), B(0xffc23a)); mBelly.position.set(0, 1.15, 0.45); majin.add(mBelly);
+    const mHead = new T.Mesh(new T.SphereGeometry(0.85, 14, 10), mBodyMat); mHead.position.y = 2.6; majin.add(mHead);
+    for (const sx of [-1, 1]) {
+      const horn = new T.Mesh(new T.ConeGeometry(0.2, 0.9, 8), M(0xf2e2c4)); horn.position.set(sx * 0.6, 3.35, 0); horn.rotation.z = -sx * 0.55; majin.add(horn);
+      const eye = new T.Mesh(new T.SphereGeometry(0.17, 10, 8), B(0xfff3a0)); eye.position.set(sx * 0.32, 2.72, 0.72); majin.add(eye);
+      const pup = new T.Mesh(new T.SphereGeometry(0.07, 8, 6), B(0x6b1a08)); pup.position.set(sx * 0.32, 2.72, 0.87); majin.add(pup);
+      const brow = new T.Mesh(new T.BoxGeometry(0.4, 0.08, 0.08), B(0x6b1a08)); brow.position.set(sx * 0.3, 2.95, 0.8); brow.rotation.z = sx * 0.4; majin.add(brow);
+    }
+    const mouth = new T.Mesh(new T.BoxGeometry(0.55, 0.12, 0.06), B(0x6b1a08)); mouth.position.set(0, 2.35, 0.82); majin.add(mouth);
+    const arms = [];
+    for (const sx of [-1, 1]) { const arm = new T.Group(); arm.position.set(sx * 1.05, 2.0, 0.1); const a1 = new T.Mesh(new T.ConeGeometry(0.32, 1.3, 8), mBodyMat); a1.rotation.z = sx * 2.2; a1.position.set(sx * 0.4, -0.2, 0); arm.add(a1); const fist = new T.Mesh(new T.SphereGeometry(0.33, 10, 8), B(0xffc23a)); fist.position.set(sx * 0.85, -0.55, 0.1); arm.add(fist); majin.add(arm); arms.push({ arm, sx }); }
+    const majinFlames = mkFlames(majin, [[0, 3.6, -0.2, 1.4, 0xff6a1a], [-0.5, 3.3, -0.3, 1.0, 0xff3b1a], [0.5, 3.3, -0.3, 1.0, 0xff7a1a], [-0.95, 1.4, 0.6, 0.5, 0xffc21a], [0.95, 1.4, 0.6, 0.5, 0xffc21a]]);
+    majin.userData = { flash: mBodyMat, base: 0xff5a14, flames: majinFlames, arms };
+    
+    const dragon = new T.Group();
+    const dMat = M(0xa4182a), dGold = M(0xe8b83a), dBelly = M(0xf0c08a);
+    const dBody = new T.Mesh(new T.SphereGeometry(1.1, 14, 10), dMat); dBody.scale.set(1.2, 0.95, 1.35); dBody.position.set(0, 1.25, -0.2); dragon.add(dBody);
+    const dChest = new T.Mesh(new T.SphereGeometry(0.75, 12, 8), dBelly); dChest.scale.set(1, 1.1, 0.6); dChest.position.set(0, 1.25, 0.75); dragon.add(dChest);
+    const dNeck = new T.Mesh(new T.CylinderGeometry(0.42, 0.55, 1.1, 10), dMat); dNeck.position.set(0, 2.1, 0.55); dNeck.rotation.x = 0.35; dragon.add(dNeck);
+    const dHead = new T.Mesh(new T.BoxGeometry(1.0, 0.75, 1.1), dMat); dHead.position.set(0, 2.75, 0.95); dragon.add(dHead);
+    const dSnout = new T.Mesh(new T.BoxGeometry(0.7, 0.45, 0.6), dMat); dSnout.position.set(0, 2.6, 1.6); dragon.add(dSnout);
+    for (const sx of [-1, 1]) {
+      const eye = new T.Mesh(new T.SphereGeometry(0.12, 8, 6), B(0xffe36a)); eye.position.set(sx * 0.3, 2.9, 1.5); dragon.add(eye);
+      for (const [hy, hz, hs] of [[3.3, 0.7, 1], [3.2, 0.95, 0.7]]) { const horn = new T.Mesh(new T.ConeGeometry(0.12 * hs, 0.8 * hs, 8), dGold); horn.position.set(sx * 0.38, hy, hz); horn.rotation.z = -sx * 0.35; horn.rotation.x = -0.4; dragon.add(horn); }
+      const leg = new T.Mesh(new T.CylinderGeometry(0.28, 0.32, 0.8, 8), dMat); leg.position.set(sx * 0.85, 0.4, 0.55); dragon.add(leg);
+      const leg2 = new T.Mesh(new T.CylinderGeometry(0.28, 0.32, 0.8, 8), dMat); leg2.position.set(sx * 0.85, 0.4, -0.9); dragon.add(leg2);
+    }
+    const crown = new T.Mesh(new T.CylinderGeometry(0.42, 0.5, 0.25, 8), dGold); crown.position.set(0, 3.2, 0.9); dragon.add(crown);
+    const wings = [];
+    for (const sx of [-1, 1]) { const w = new T.Group(); w.position.set(sx * 0.9, 1.9, -0.4); const sh = new T.Shape(); sh.moveTo(0, 0); sh.lineTo(sx * 2.2, 1.3); sh.lineTo(sx * 1.9, 0.2); sh.lineTo(sx * 2.3, -0.4); sh.lineTo(sx * 1.2, -0.3); sh.lineTo(0, -0.5);
+      const wm = new T.Mesh(new T.ShapeGeometry(sh), M(0x6a1020, { side: T.DoubleSide })); wm.rotation.y = sx * 0.5; w.add(wm); dragon.add(w); wings.push({ w, sx }); }
+    const tail = new T.Mesh(new T.ConeGeometry(0.4, 1.8, 8), dMat); tail.rotation.x = -Math.PI / 2 - 0.3; tail.position.set(0, 0.8, -1.9); dragon.add(tail);
+    const dragonFlames = mkFlames(dragon, [[0, 3.55, 0.6, 0.8, 0xff6a1a], [-0.35, 3.4, 0.45, 0.6, 0xffc21a], [0.35, 3.4, 0.45, 0.6, 0xff3b1a], [0, 2.3, 2.1, 0.55, 0xffc21a]]);
+    dragon.userData = { flash: dMat, base: 0xa4182a, flames: dragonFlames, wings };
+    for (const o of [truck, majin, dragon]) { o.traverse(m => { if (m.isMesh) m.castShadow = true; }); o.visible = false; scene3.add(o); }
+    const bosses = { house: boss, truck, majin, dragon };
+    Object.assign(R3, { bosses, hydrants, matSmoke, matSmokeF });
     Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody, bossFlames,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
@@ -1611,7 +1718,8 @@ function drawFx3(dt) {
   for (const im of [R.puffIM, R.sparkIM]) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
   d.quaternion.set(0, 0, 0, 1);
 }
-const ECOL3 = { grunt: 0xff7a1a, brute: 0xff3b1a, split: 0xb04dff, ball: 0xffd21a };   
+const ECOL3 = { grunt: 0xff7a1a, brute: 0xff3b1a, grab: 0xa3122e };   
+function lavaCol(e) { const k = clamp(e.hp / e.max, 0, 1), a = [0x3a, 0x2c, 0x28], b = [0xff, 0x4a, 0x10]; return (Math.round(a[0] + (b[0] - a[0]) * k) << 16) | (Math.round(a[1] + (b[1] - a[1]) * k) << 8) | Math.round(a[2] + (b[2] - a[2]) * k); }
 function render3D(g, sx, sy) {
   const R = R3, T = R.T, d = R.dummy, C = CONFIG;
   
@@ -1666,9 +1774,10 @@ function render3D(g, sx, sy) {
       const sink = row.done ? 1 - (g.t - (row.goneT || 0)) / 0.15 : 1;
       if (sink <= 0) continue;
       const taken = false, H = 2.3 * sink;
-      const pn = R.panels.get(); pn.material = taken ? R.matDim : sl.good ? R.matBlue : R.matRed;
+      const sm = sl.smoke > 0;   
+      const pn = R.panels.get(); pn.material = sm ? R.matSmoke : taken ? R.matDim : sl.good ? R.matBlue : R.matRed;
       pn.position.set(cx, H / 2, z); pn.scale.set(Math.max(0.05, w - 0.12), H, 0.08);
-      const fm = sl.good ? R.matBlueF : R.matRedF;
+      const fm = sm ? R.matSmokeF : sl.good ? R.matBlueF : R.matRedF;
       for (const [px, pw] of [[x0 + 0.08, 0.16], [x1 - 0.08, 0.16]]) { const f = R.frames.get(); f.material = taken ? R.matDim : fm; f.position.set(px, H / 2, z); f.scale.set(pw, H, 0.16); }
       const top = R.frames.get(); top.material = taken ? R.matDim : fm; top.position.set(cx, H, z); top.scale.set(w, 0.16, 0.16);
     }
@@ -1710,16 +1819,21 @@ function render3D(g, sx, sy) {
     d.rotation.set(0, 0, 0); d.quaternion.copy(R.cam.quaternion); d.position.set(wx(x), r * 1.1, wz(y)); d.scale.set(r * 3.4 * fl, r * 3.4 * fl, 1); d.updateMatrix(); R.haloIM.setMatrixAt(n, d.matrix); d.quaternion.set(0, 0, 0, 1);   
     n++;
   };
-  for (const e of g.enemies) flame(e.x, e.y, e.r / U3 * 1.1, ECOL3[e.kind] || 0xff7a1a, e.x * 0.37);
+  for (const e of g.enemies) {
+    if (e.kind === 'hydrant') { const hy = R.hydrants.get(), k = e.r / U3 * 2.8; hy.position.set(wx(e.x), 0, wz(e.y)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(e.flash > 0 ? 0xffffff : 0xd8262a); continue; }
+    flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'lava' ? lavaCol(e) : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37);
+  }
   
   for (const { sp, ahead } of AH.squads) for (const lane of sp.lanes) {
     const cols = sp.cols || 6, x0 = laneX(lane) - LANE_W * 0.4;
     for (let rI = 0; rI < sp.rows; rI++) for (let c = 0; c < cols; c++) flame(x0 + (c + 0.5) * (LANE_W * 0.8 / cols), -30 - rI * 19 - ahead, 9 / U3 * 1.1, 0xff7a1a, c + rI);
     if (sp.mix && lane === sp.lanes[0]) {   
-      if (sp.mix.split) flame(laneX(lane), -40 - sp.rows * 19 - ahead, 13 / U3 * 1.1, ECOL3.split, 1);
-      for (let k = 0; k < sp.mix.ball; k++) flame(laneX(lane) + (k ? 20 : -20), -10 + k * 30 - ahead, 8 / U3 * 1.1, ECOL3.ball, k);
+      if (sp.mix.grab) flame(laneX(lane), -44 - sp.rows * 19 - ahead, 12 / U3 * 1.1, ECOL3.grab, 1);
+      if (sp.mix.lava) flame(laneX(lane), -50 - sp.rows * 19 - ahead - (sp.mix.grab ? 30 : 0), 15 / U3 * 1.1, 0xff4a10, 2);
+      if (sp.mix.hydrant && sp.rows * cols >= 6) { const hy = R.hydrants.get(), k = 10 / U3 * 2.8; hy.position.set(wx(laneX(lane)), 0, wz(-30 - Math.floor(sp.rows / 2) * 19 - 4 - ahead)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(0xd8262a); }
     }
   }
+  R.hydrants.end();
   R.enemyBody.count = R.enemyHorn.count = R.glowIM.count = R.haloIM.count = n; R.enemyEye.count = h;
   R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = R.enemyEye.instanceMatrix.needsUpdate = R.glowIM.instanceMatrix.needsUpdate = R.haloIM.instanceMatrix.needsUpdate = true;
   if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
@@ -1736,17 +1850,22 @@ function render3D(g, sx, sy) {
   R.bulletIM.count = n; R.bulletIM.instanceMatrix.needsUpdate = true;
   
   const Bs = g.boss || (AH.boss && { x: 180, y: AH.boss.y, r: 46, hp: 1, flash: 0 });   
-  R.boss.visible = !!(Bs && Bs.hp > 0);
-  if (R.boss.visible) {
-    const r = Bs.r / U3;
-    R.boss.position.set(wx(Bs.x), 0, wz(Bs.y)); R.boss.scale.set(r, r, r); R.boss.rotation.y = 0;
-    R.bossBody.material.color.setHex(Bs.flash > 0 ? 0xffffff : 0xe8c9a0);   
-    for (const bf of R.bossFlames) { const k = 1 + 0.18 * Math.sin(g.t * 11 + bf.ph) + 0.08 * Math.sin(g.t * 23 + bf.ph); bf.f.scale.set(1, k, 1); }   
+  const bk = bossKindOf(g.level), show = !!(Bs && Bs.hp > 0);   
+  for (const k in R.bosses) R.bosses[k].visible = show && k === bk;
+  if (show) {
+    const r = Bs.r / U3, bo = R.bosses[bk], u = bo.userData;
+    bo.position.set(wx(Bs.x), 0, wz(Bs.y)); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0;   
+    u.flash.color.setHex(Bs.flash > 0 ? 0xffffff : u.base);   
+    for (const bf of u.flames) { const k = 1 + 0.18 * Math.sin(g.t * 11 + bf.ph) + 0.08 * Math.sin(g.t * 23 + bf.ph); bf.f.scale.set(1, k, 1); }   
+    if (u.arms) for (const a of u.arms) a.arm.rotation.z = a.sx * (0.25 + 0.2 * Math.sin(g.t * 3 + a.sx));   
+    if (u.wings) for (const w of u.wings) w.w.rotation.z = w.sx * 0.25 * Math.sin(g.t * 4);   
+    if (bk === 'majin') bo.position.y = 0.15 * Math.abs(Math.sin(g.t * 3));
   }
   
   const now3 = performance.now(), fdt = clamp((now3 - (R.fxT || now3)) / 1000, 0, 0.05); R.fxT = now3;
   if (!paused) {
-    for (const e of g.enemies) if (Math.random() < fdt * (e.kind === 'ball' ? 8 : 0.6)) fxSparks(e.x, e.y, 1);   
+    for (const e of g.enemies) if (e.kind !== 'hydrant' && Math.random() < fdt * (e.kind === 'lava' ? 2 * e.hp / e.max : 0.6)) fxSparks(e.x, e.y, 1);
+    for (const row of g.rows) if (!row.done) for (const z of row.segs) if (z.s.smoke > 0 && Math.random() < fdt * 4) fxSmoke(z.x0 + (z.x1 - z.x0) * Math.random(), row.y, 1);   
     for (const row of g.rows) for (const z of row.segs) if (z.s.type === 'tire' && z.s.hp > 0 && z.s.skin === 2 && Math.random() < fdt * 3) fxSmoke((z.x0 + z.x1) / 2, row.y, 1);
     if (g.boss && g.boss.hp > 0 && g.boss.y > -20) { if (Math.random() < fdt * 8) fxSparks(g.boss.x + rr2(-40, 40), g.boss.y, 2); if (Math.random() < fdt * 3) fxSmoke(g.boss.x, g.boss.y - 20, 1); }
     drawFx3(fdt);
@@ -1769,10 +1888,12 @@ function drawLabels3D(g) {
       if (row.done) continue;
       const [px, py, k] = P3(cx, row.y, 1.15), [ax] = P3(s.x0, row.y, 1.15), [bx] = P3(s.x1, row.y, 1.15);
       const fs = clamp((bx - ax) * 0.42, 9, 24 * k);
+      if (sl.smoke > 0) { txt('?', px, py, fs * 1.2, '#fff'); continue; }   
       if (sl.type === 'div') { txt('÷2', px, py, fs, '#fff'); continue; }
       txt(gateLabel(sl), px, py, sl.hitT > 0 ? fs * 1.12 : fs, '#fff');
     }
   }
+  for (const e of g.enemies) if (e.kind === 'grab' && e.cap > 0 && e.y > -20) { const [px, py, k] = P3(e.x, e.y, e.r / U3 * 3); txt('+' + e.cap, px, py, 16 * Math.max(0.7, k), '#6fc3ff'); }   
   const Bs = g.boss;
   if (Bs && Bs.hp > 0) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9); txt(bossText(Bs), px, py, 24 * k, '#ffd0a0'); }
   const [px, py] = P3(g.lx, CONFIG.LEADER_Y, 1.6);

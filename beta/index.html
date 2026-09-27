@@ -13,17 +13,20 @@
                touch-action:none; overscroll-behavior:none;
                -webkit-touch-callout:none; -webkit-user-select:none; -moz-user-select:none;
                -ms-user-select:none; user-select:none; }
-  canvas { position:absolute; left:0; top:0; display:block; background:#101320;
+  #gl { position:absolute; display:none; pointer-events:none; }   
+  canvas { position:absolute; left:0; top:0; display:block; background:transparent;
            touch-action:none; -webkit-touch-callout:none;
            -webkit-tap-highlight-color:transparent;
            -webkit-user-select:none; user-select:none; -webkit-user-drag:none; }
 </style>
 </head>
 <body>
+<canvas id="gl"></canvas>
 <canvas id="game"></canvas>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v30';
+const VERSION = 'v31';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -90,6 +93,7 @@ function mulberry32(a) {
   };
 }
 let rng = mulberry32(1);
+const R3 = { on: false };   
 const rr = (a, b) => a + (b - a) * rng();
 const ri = (a, b) => Math.floor(rr(a, b + 1));
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -695,7 +699,8 @@ function popText(x, y, s, col, size) { if (texts.length < 60) texts.push({ x, y,
 function ring(x, y, r, col) { if (rings.length < 40) rings.push({ x, y, r, col, life: 0.3 }); }
 function shake(a) { shakeA = Math.max(shakeA, a); shakeT = 0.18; }
 function coinFx(x, y, v) {
-  if (coinsFly.length < 60) coinsFly.push({ x, y, t: 0, vx: rr(-40, 40), vy: rr(-90, -50) });
+  const [sx, sy] = SP(x, y);   
+  if (coinsFly.length < 60) coinsFly.push({ x: sx, y: sy, t: 0, vx: rr(-40, 40), vy: rr(-90, -50) });
   if (texts.length < 50) texts.push({ x: x + 8, y: y - 6, s: '+' + v, col: '#ffd84a', life: 0.6, size: 11 });
 }
 function weaponFx(w) { weaponBanner = { w, life: 1.6 }; hitstop = 0.15; }
@@ -759,12 +764,14 @@ function resize() {
   canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
   scale = Math.min(w / CONFIG.W, h / CONFIG.H);
   offX = (w - CONFIG.W * scale) / 2; offY = (h - CONFIG.H * scale) / 2;
+  if (R3.on) resize3D();
 }
 window.addEventListener('resize', resize);
 resize();
 
 let scene = 'menu', game = null, paused = false, bgY = 0, resultInfo = null;
 function startRun() {
+  init3D();
   game = newRun(meta.level, meta, null);
   parts = []; texts = []; rings = []; coinsFly = []; weaponBanner = null;
   scene = 'play';
@@ -1028,11 +1035,11 @@ function drawFx(dt) {
   drawCoinsFly(dt);
   for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92; p.life -= dt; }
   parts = parts.filter(p => p.life > 0);
-  for (const p of parts) { ctx.globalAlpha = Math.min(1, p.life / 0.3); ctx.fillStyle = p.col; ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2); }
+  for (const p of parts) { const [x, y, k] = SP(p.x, p.y), r = p.r * k; ctx.globalAlpha = Math.min(1, p.life / 0.3); ctx.fillStyle = p.col; ctx.fillRect(x - r, y - r, r * 2, r * 2); }
   ctx.globalAlpha = 1;
-  for (const r of rings) { r.life -= dt; ctx.strokeStyle = r.col; ctx.globalAlpha = Math.max(0, r.life / 0.3); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (1.3 - r.life), 0, 6.28); ctx.stroke(); }
+  for (const r of rings) { const [x, y, k] = SP(r.x, r.y); r.life -= dt; ctx.strokeStyle = r.col; ctx.globalAlpha = Math.max(0, r.life / 0.3); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r.r * k * (1.3 - r.life), 0, 6.28); ctx.stroke(); }
   rings = rings.filter(r => r.life > 0); ctx.globalAlpha = 1;
-  for (const t of texts) { t.life -= dt; t.y -= 40 * dt; ctx.globalAlpha = Math.min(1, t.life / 0.3); txt(t.s, t.x, t.y, t.size, t.col); }
+  for (const t of texts) { t.life -= dt; t.y -= 40 * dt; const [x, y, k] = SP(t.x, t.y); ctx.globalAlpha = Math.min(1, t.life / 0.3); txt(t.s, x, y, t.size * Math.max(0.8, k), t.col); }
   texts = texts.filter(t => t.life > 0); ctx.globalAlpha = 1;
   if (weaponBanner) {
     weaponBanner.life -= dt;
@@ -1131,11 +1138,203 @@ function drawResult() {
   buttons.push(go);
 }
 
+
+const U3 = 20;
+const CAM3 = { fov: 56, y: 20, z: 19, look: -10.5 };                                       
+const wx = x => (x - 180) / U3, wz = y => (y - CONFIG.LEADER_Y) / U3;
+function init3D() {
+  if (R3.tried) return; R3.tried = true;
+  if (!window.THREE || SIM) return;
+  try {
+    const T = THREE, glc = document.getElementById('gl');
+    const renderer = new T.WebGLRenderer({ canvas: glc, antialias: true });
+    renderer.setClearColor(0x1a2238);
+    const scene3 = new T.Scene();
+    scene3.fog = new T.Fog(0x1a2238, 34, 52);
+    const cam = new T.PerspectiveCamera(CAM3.fov, CONFIG.W / CONFIG.H, 0.5, 90);
+    scene3.add(new T.HemisphereLight(0xdfe8ff, 0x2a2f44, 0.85));
+    const sun = new T.DirectionalLight(0xffffff, 0.75); sun.position.set(-6, 14, 8); scene3.add(sun);
+    const M = (c, o) => new T.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
+    const B = (c, o) => new T.MeshBasicMaterial(Object.assign({ color: c }, o || {}));
+    
+    const rc = document.createElement('canvas'); rc.width = 256; rc.height = 256;
+    const rx = rc.getContext('2d');
+    rx.fillStyle = '#2b3350'; rx.fillRect(0, 0, 256, 256);
+    rx.fillStyle = 'rgba(255,255,255,0.22)'; for (const lx of [256 / 3, 512 / 3]) rx.fillRect(lx - 3, 0, 6, 128);
+    const tex = new T.CanvasTexture(rc); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(1, 20);
+    const roadW = (CONFIG.ROAD_R - CONFIG.ROAD_L) / U3, roadL = 80;
+    const road = new T.Mesh(new T.PlaneGeometry(roadW, roadL), M(0xffffff, { map: tex }));
+    road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -roadL / 2 + 12); scene3.add(road);
+    const water = new T.Mesh(new T.PlaneGeometry(80, roadL), M(0x1d3f6e)); water.rotation.x = -Math.PI / 2; water.position.set(0, -1.2, -roadL / 2 + 12); scene3.add(water);
+    for (const sx of [-1, 1]) {   
+      const rail = new T.Mesh(new T.BoxGeometry(0.25, 0.25, roadL), M(0x6f7ba8)); rail.position.set(sx * (roadW / 2 + 0.15), 0.9, -roadL / 2 + 12); scene3.add(rail);
+      const side = new T.Mesh(new T.BoxGeometry(0.4, 1.2, roadL), M(0x39436a)); side.position.set(sx * (roadW / 2 + 0.2), -0.6, -roadL / 2 + 12); scene3.add(side);
+    }
+    const postIM = new T.InstancedMesh(new T.BoxGeometry(0.22, 0.9, 0.22), M(0x8a96c8), 60); scene3.add(postIM);
+    
+    const pool = make => { const p = { items: [], n: 0, get() { if (p.n >= p.items.length) { const o = make(); scene3.add(o); p.items.push(o); } const o = p.items[p.n++]; o.visible = true; return o; },
+      end() { for (let i = p.n; i < p.items.length; i++) p.items[i].visible = false; p.n = 0; } }; return p; };
+    const matRed = M(0xff4d5e, { transparent: true, opacity: 0.45 }), matBlue = M(0x3fa9ff, { transparent: true, opacity: 0.45 });
+    const matRedF = M(0xff4d5e), matBlueF = M(0x3fa9ff), matDim = M(0x555a70, { transparent: true, opacity: 0.25 });
+    const box = new T.BoxGeometry(1, 1, 1);
+    const panels = pool(() => new T.Mesh(box, matRed)), frames = pool(() => new T.Mesh(box, matRedF));
+    const tireGeo = new T.CylinderGeometry(1, 1, 0.55, 24), tireHole = new T.CylinderGeometry(0.45, 0.45, 0.02, 16);
+    const tires = pool(() => { const gr = new T.Group(); for (let k = 0; k < 3; k++) { const m = new T.Mesh(tireGeo, M(0x1c1f28)); m.position.y = 0.3 + k * 0.56; gr.add(m); } const h = new T.Mesh(tireHole, M(0x6b7080)); h.position.y = 1.7; gr.add(h); return gr; });
+    const walls = pool(() => new T.Mesh(box, M(0x0d0f16)));
+    
+    const unitBody = new T.InstancedMesh(new T.CylinderGeometry(0.22, 0.28, 0.55, 8), M(0x3d86e0), 260);
+    const unitHead = new T.InstancedMesh(new T.SphereGeometry(0.2, 10, 8), M(0x9ed6ff), 260);
+    const enemyBody = new T.InstancedMesh(new T.SphereGeometry(1, 12, 10), M(0xff4d5e), 500);
+    const enemyHorn = new T.InstancedMesh(new T.ConeGeometry(0.28, 0.6, 6), M(0xffb0b8), 1000);
+    const bulletIM = new T.InstancedMesh(new T.BoxGeometry(0.1, 0.1, 0.45), B(0xfff3b0), 700);
+    for (const im of [unitBody, unitHead, enemyBody, enemyHorn, bulletIM]) { im.frustumCulled = false; scene3.add(im); }
+    
+    const boss = new T.Group();
+    const bossBody = new T.Mesh(new T.SphereGeometry(1, 20, 16), M(0xd8324a)); boss.add(bossBody);
+    for (let k = 0; k < 18; k++) {
+      const sp = new T.Mesh(new T.ConeGeometry(0.22, 0.7, 6), M(0x9e1f35));
+      const a = k / 18 * Math.PI * 2, b = (k % 3 - 1) * 0.5;
+      sp.position.set(Math.cos(a) * Math.cos(b), Math.sin(b) + 0.2, Math.sin(a) * Math.cos(b)).multiplyScalar(1);
+      sp.lookAt(sp.position.clone().multiplyScalar(2)); sp.rotateX(Math.PI / 2); boss.add(sp);
+    }
+    for (const ex of [-0.35, 0.35]) { const e = new T.Mesh(new T.BoxGeometry(0.28, 0.2, 0.1), B(0xffd84a)); e.position.set(ex, 0.25, 0.95); boss.add(e); }
+    boss.visible = false; scene3.add(boss);
+    Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, bulletIM, boss, bossBody,
+                        matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
+    resize3D();
+  } catch (e) { R3.on = false; R3.err = String(e); }
+}
+function resize3D() {
+  if (!R3.on) return;
+  const glc = document.getElementById('gl');
+  glc.style.left = offX + 'px'; glc.style.top = offY + 'px';
+  glc.style.width = CONFIG.W * scale + 'px'; glc.style.height = CONFIG.H * scale + 'px';
+  R3.renderer.setPixelRatio(dpr);
+  R3.renderer.setSize(CONFIG.W * scale, CONFIG.H * scale, false);
+}
+
+function P3(x, y, h) {
+  const v = R3.v.set(wx(x), h || 0, wz(y)), d = R3.cam.position.distanceTo(v);
+  v.project(R3.cam);
+  return [(v.x + 1) / 2 * CONFIG.W, (1 - v.y) / 2 * CONFIG.H, clamp(19 / d, 0.45, 1.5)];
+}
+
+function SP(x, y) { return R3.on && scene === 'play' ? P3(x, y, 0.8) : [x, y, 1]; }
+function render3D(g, sx, sy) {
+  const R = R3, T = R.T, d = R.dummy, C = CONFIG;
+  R.cam.position.set(sx * 0.05, CAM3.y + sy * 0.05, CAM3.z); R.cam.lookAt(sx * 0.05, 0, CAM3.look);
+  R.tex.offset.y = (bgY / U3) / 4;   
+  for (let i = 0; i < 60; i++) {   
+    const z = -52 + ((i >> 1) * 2.4 + (bgY / U3) % 2.4);
+    d.position.set((i & 1 ? 1 : -1) * ((C.ROAD_R - C.ROAD_L) / U3 / 2 + 0.15), 0.45, z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix();
+    R.postIM.setMatrixAt(i, d.matrix);
+  }
+  R.postIM.instanceMatrix.needsUpdate = true;
+  
+  for (const row of g.rows) {
+    const z = wz(row.y);
+    if (z < -46 || z > 14) continue;
+    for (const s of row.segs) {
+      const sl = s.s, x0 = wx(s.x0), x1 = wx(s.x1), cx = (x0 + x1) / 2, w = x1 - x0;
+      if (sl.type === 'empty') continue;
+      if (sl.type === 'tire') {
+        if (sl.hp <= 0) continue;
+        const t = R.tires.get(), r = Math.min(w * 0.42, 2.2);
+        t.position.set(cx, 0, z); t.scale.set(r, 1, r);
+        for (let k = 0; k < 3; k++) t.children[k].material.color.setHex(sl.hitT > 0 ? 0x5a5f70 : 0x1c1f28);
+        continue;
+      }
+      const taken = row.done && !(row.picked || []).includes(sl), H = 2.3;
+      const pn = R.panels.get(); pn.material = taken ? R.matDim : sl.good ? R.matBlue : R.matRed;
+      pn.position.set(cx, H / 2, z); pn.scale.set(Math.max(0.05, w - 0.12), H, 0.08);
+      const fm = sl.good ? R.matBlueF : R.matRedF;
+      for (const [px, pw] of [[x0 + 0.08, 0.16], [x1 - 0.08, 0.16]]) { const f = R.frames.get(); f.material = taken ? R.matDim : fm; f.position.set(px, H / 2, z); f.scale.set(pw, H, 0.16); }
+      const top = R.frames.get(); top.material = taken ? R.matDim : fm; top.position.set(cx, H, z); top.scale.set(w, 0.16, 0.16);
+    }
+  }
+  R.panels.end(); R.frames.end(); R.tires.end();
+  
+  for (const w of g.walls) for (const bx of [C.ROAD_L + LANE_W, C.ROAD_L + LANE_W * 2]) {
+    const m = R.walls.get(), z0 = wz(w.y - w.len), z1 = wz(w.y);
+    m.position.set(wx(bx), 0.8, (z0 + z1) / 2); m.scale.set(0.45, 1.6, z1 - z0);
+  }
+  R.walls.end();
+  
+  let n = 0;
+  for (const u of g.units) {
+    if (n >= 260) break;
+    const k = u.d / 11;
+    d.rotation.set(0, 0, 0);
+    d.position.set(wx(u.x), 0.3 * k, wz(u.y)); d.scale.set(k, k, k); d.updateMatrix(); R.unitBody.setMatrixAt(n, d.matrix);
+    d.position.y = 0.72 * k; d.updateMatrix(); R.unitHead.setMatrixAt(n, d.matrix);
+    n++;
+  }
+  R.unitBody.count = R.unitHead.count = n;
+  R.unitBody.instanceMatrix.needsUpdate = R.unitHead.instanceMatrix.needsUpdate = true;
+  
+  n = 0; let h = 0;
+  for (const e of g.enemies) {
+    if (n >= 500) break;
+    const r = e.r / U3 * 1.1, bob = Math.abs(Math.sin(g.t * 9 + e.x)) * 0.12;
+    d.rotation.set(0, 0, 0); d.position.set(wx(e.x), r + bob, wz(e.y)); d.scale.set(r, r, r); d.updateMatrix(); R.enemyBody.setMatrixAt(n, d.matrix);
+    R.col.setHex(e.kind === 'brute' ? 0xff8a3a : 0xff4d5e); R.enemyBody.setColorAt(n, R.col);
+    for (const sgn of [-1, 1]) { d.position.set(wx(e.x) + sgn * r * 0.55, r * 1.75 + bob, wz(e.y)); d.rotation.set(0, 0, -sgn * 0.4); d.scale.set(r, r, r); d.updateMatrix(); R.enemyHorn.setMatrixAt(h++, d.matrix); }
+    n++;
+  }
+  R.enemyBody.count = n; R.enemyHorn.count = h;
+  R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = true;
+  if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
+  
+  n = 0;
+  for (const b of g.bullets) {
+    if (n >= 700) break;
+    d.rotation.set(0, 0, 0); d.position.set(wx(b.x), 0.55, wz(b.y)); d.scale.set(1, 1, 1); d.updateMatrix(); R.bulletIM.setMatrixAt(n++, d.matrix);
+  }
+  R.bulletIM.count = n; R.bulletIM.instanceMatrix.needsUpdate = true;
+  
+  const Bs = g.boss;
+  R.boss.visible = !!(Bs && Bs.hp > 0);
+  if (R.boss.visible) {
+    const r = Bs.r / U3;
+    R.boss.position.set(wx(Bs.x), r * 1.05, wz(Bs.y)); R.boss.scale.set(r, r, r); R.boss.rotation.y = Math.sin(g.t * 1.5) * 0.3;
+    R.bossBody.material.color.setHex(Bs.flash > 0 ? 0xffffff : 0xd8324a);
+  }
+  R.renderer.render(R.scene3, R.cam);
+}
+
+function drawLabels3D(g) {
+  for (const row of g.rows) {
+    if (row.y < -60 || row.y > CONFIG.H + 20) continue;
+    for (const s of row.segs) {
+      const sl = s.s, cx = (s.x0 + s.x1) / 2;
+      if (sl.type === 'empty') continue;
+      if (sl.type === 'tire') {
+        if (sl.hp <= 0) continue;
+        const [px, py, k] = P3(cx, row.y, 2.2);
+        txt(String(Math.ceil(sl.hp)), px, py - 8 * k, (sl.hitT > 0 ? 19 : 17) * k, '#ff9a5a');
+        continue;
+      }
+      if (row.done) continue;
+      const [px, py, k] = P3(cx, row.y, 1.15), [ax] = P3(s.x0, row.y, 1.15), [bx] = P3(s.x1, row.y, 1.15);
+      const fs = clamp((bx - ax) * 0.42, 9, 24 * k);
+      if (sl.type === 'div') { txt('÷2', px, py, fs, '#fff'); continue; }
+      txt(gateLabel(sl), px, py, sl.hitT > 0 ? fs * 1.12 : fs, '#fff');
+    }
+  }
+  const Bs = g.boss;
+  if (Bs && Bs.hp > 0) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 2.6); txt(String(Math.max(0, Math.ceil(Bs.hp / CONFIG.CLASH))), px, py, 24 * k, '#fff'); }
+  const [px, py] = P3(g.lx, CONFIG.LEADER_Y, 1.6);
+  txt(String(g.N), px, py, 20, '#fff');
+}
+
 let last = performance.now();
 function frame(now) {
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#101320'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const in3D = R3.on && scene === 'play';
+  document.getElementById('gl').style.display = in3D ? 'block' : 'none';
+  if (in3D) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  else { ctx.fillStyle = '#101320'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   let sx = 0, sy = 0;
   if (shakeT > 0) { shakeT -= dt; sx = (Math.random() - 0.5) * shakeA * 2; sy = (Math.random() - 0.5) * shakeA * 2; } else shakeA = 0;
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (offX + sx * scale), dpr * (offY + sy * scale));
@@ -1153,7 +1352,9 @@ function frame(now) {
       update(g, gdt);
       bgY += CONFIG.SCROLL * gdt;
     }
-    drawRoad(); drawRows(g, paused ? 0 : dt); drawWalls(g); drawEnemies(g); drawBullets(g); drawCrowd(g); drawFx(paused ? 0 : dt); drawHud(g);
+    if (in3D) { render3D(g, sx, sy); drawLabels3D(g); }
+    else { drawRoad(); drawRows(g, paused ? 0 : dt); drawWalls(g); drawEnemies(g); drawBullets(g); drawCrowd(g); }
+    drawFx(paused ? 0 : dt); drawHud(g);
     if (paused) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, CONFIG.W, CONFIG.H); txt('PAUSED', 180, 300, 30, '#fff'); txt('tap to resume', 180, 340, 14, '#fff'); }
     if (g.over) {
       g.overT = (g.overT || 0) + dt;

@@ -23,7 +23,7 @@
 <canvas id="game"></canvas>
 <script>
 
-const VERSION = 'v12';
+const VERSION = 'v13';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -51,7 +51,8 @@ const CONFIG = {
   BOSS_CRUSH: 0.08,               
   
   BOSS_GATE_EVERY: 4.5,           
-  BOSS_SCROLL: 0.7,               
+  
+  BOSS_SCROLL: 1,
   SLAM_W: 90,                     
   SLAM_WARN: 1.1,                 
   SLAM_LOSS: 0.6,                 
@@ -612,13 +613,12 @@ function trackFlow(g, dt, scroll) {
     if (sp.kind === 'row') { g.rows.push({ y: -40, lanes: sp.lanes, done: false }); g.ti++; }
     else if (sp.kind === 'squad') { for (const l of sp.lanes) spawnSquad(g, l, sp.rows); g.ti++; }
     else if (sp.kind === 'boss') {
-      if (g.rows.length === 0 && g.enemies.length === 0) { spawnBoss(g); g.ti++; }
-      else break;
+      spawnBoss(g); g.ti++;   
     }
   }
 }
 function spawnBoss(g) {
-  g.boss = { x: 180, y: -70, r: 46, hp: CONFIG.BOSS_HP * g.mul, max: CONFIG.BOSS_HP * g.mul,   
+  g.boss = { x: 180, y: -60, r: 46, hp: CONFIG.BOSS_HP * g.mul, max: CONFIG.BOSS_HP * g.mul,   
              t: 0, crush: 0, minion: 4.0, burn: 0, burnD: 0, flash: 0 };
   g.bossSpawned = true;
   if (!SIM) { sfx('boss'); shake(6); }
@@ -630,7 +630,7 @@ function update(g, dt) {
   g.t += dt;
   const C = CONFIG;
   
-  const scroll = g.boss ? C.SCROLL * C.BOSS_SCROLL : C.SCROLL;
+  const scroll = g.boss ? C.SCROLL * C.BOSS_SCROLL : C.SCROLL;   
 
   
   g.target = clamp(g.target, C.ROAD_L + 6, C.ROAD_R - 6);
@@ -907,8 +907,8 @@ function update(g, dt) {
     B.t += dt; B.flash = Math.max(0, B.flash - dt);
     
     const front = C.LEADER_Y - 14 - B.r;
-    if (B.y < 110) B.y += 60 * dt;
-    else if (B.y < front) B.y = Math.min(front, B.y + C.BOSS_ADV * dt);   
+    
+    if (B.y < front) B.y = Math.min(front, B.y + scroll * dt);   
     B.x += clamp(g.lx - B.x, -35 * dt, 35 * dt);
     B.x = clamp(B.x, C.ROAD_L + B.r, C.ROAD_R - B.r);
     if (B.burn > 0) { B.burn -= dt; hurt(g, B, B.burnD * dt, true); }
@@ -968,7 +968,7 @@ function update(g, dt) {
 
 function hurt(g, e, d, quiet) {
   if (e.hp <= 0) return;
-  if (e === g.boss && e.y < 100) return;   
+  if (e === g.boss && e.y < 0) return;   
   e.hp -= d;
   if (e === g.boss) { e.flash = 0.06; if (!SIM && !quiet && rng() < 0.2) popText(e.x + rr(-20, 20), e.y + rr(-10, 10), Math.round(d), '#ffd84a', 10); }
   if (e.hp <= 0 && e !== g.boss) kill(g, e);

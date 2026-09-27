@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v45';
+const VERSION = 'v46';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1058,10 +1058,17 @@ function drawBullets(g) {
   for (const b of g.bullets) { ctx.globalAlpha = clamp((CONFIG.RANGE - (b.y0 - b.y)) / 60, 0, 1); ctx.fillStyle = b.wc; ctx.fillRect(b.x - 1.5, b.y - 5, 3, 8); }   
   ctx.globalAlpha = 1;
 }
+
+function drawCoin(x, y, r) {
+  ctx.fillStyle = '#9a6a08'; ctx.beginPath(); ctx.arc(x, y + r * 0.12, r, 0, 6.28); ctx.fill();           
+  ctx.fillStyle = '#f5b800'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.28); ctx.fill();                          
+  ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(x, y, r * 0.74, 0, 6.28); ctx.fill();                   
+  ctx.strokeStyle = '#e09a00'; ctx.lineWidth = Math.max(1, r * 0.12); ctx.beginPath(); ctx.arc(x, y, r * 0.52, 0, 6.28); ctx.stroke();   
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.38, r * 0.22, r * 0.12, -0.6, 0, 6.28); ctx.fill();   
+}
 function coinPill(x, y, v) {
   ctx.fillStyle = 'rgba(0,0,0,0.45)'; rrect(x, y - 12, 26 + String(v).length * 9, 24, 12); ctx.fill();
-  ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(x + 12, y, 8, 0, 6.28); ctx.fill();
-  ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(x + 12, y - 0.5, 6.5, 0, 6.28); ctx.fill();
+  drawCoin(x + 12, y, 8.5);
   txt(String(v), x + 24, y + 1, 14, '#ffd84a', 'left');
 }
 
@@ -1092,8 +1099,7 @@ function drawCoinsFly(dt) {
     c.t += dt;
     if (c.t < 0.25) { c.x += c.vx * dt; c.y += c.vy * dt; c.vy += 300 * dt; }
     else { const k = Math.min(1, dt * 9); c.x += (VB.l + 22 - c.x) * k; c.y += (62 - c.y) * k; }
-    ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(c.x, c.y, 4.5, 0, 6.28); ctx.fill();
-    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(c.x, c.y - 0.5, 3.5, 0, 6.28); ctx.fill();
+    drawCoin(c.x, c.y, 5);
   }
   coinsFly = coinsFly.filter(c => c.t < 0.25 || Math.hypot(c.x - VB.l - 22, c.y - 62) > 6);
 }
@@ -1135,14 +1141,20 @@ function drawIcon(kind, cx, cy, sz) {
     ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = sz * 0.14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (const dx of [-sz * 0.2, sz * 0.12]) { ctx.beginPath(); ctx.moveTo(cx + dx - sz * 0.14, cy - sz * 0.3); ctx.lineTo(cx + dx + sz * 0.14, cy); ctx.lineTo(cx + dx - sz * 0.14, cy + sz * 0.3); ctx.stroke(); }
     ctx.lineCap = 'butt';
-  } else if (kind === 'army') {
-    ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy - sz * 0.2, sz * 0.17, 0, 6.28); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy + sz * 0.32, sz * 0.3, Math.PI, 0); ctx.fill();
-    plus(cx + sz * 0.33, cy - sz * 0.12, '#7dff9b');
-  } else if (kind === 'income') {
-    ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy + sz * 0.02, sz * 0.32, 0, 6.28); ctx.fill();
-    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(cx - sz * 0.1, cy, sz * 0.27, 0, 6.28); ctx.fill();
-    plus(cx + sz * 0.33, cy - sz * 0.22, '#7dff9b');
+  } else if (kind === 'army') {   
+    const x = cx - sz * 0.08;
+    ctx.fillStyle = '#23408f'; rrect(x - sz * 0.26, cy + sz * 0.08, sz * 0.52, sz * 0.38, 6); ctx.fill();          
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.26, cy + sz * 0.26, sz * 0.52, sz * 0.05);                     
+    ctx.fillStyle = '#f2c9a0'; ctx.beginPath(); ctx.arc(x, cy - sz * 0.02, sz * 0.15, 0, 6.28); ctx.fill();           
+    ctx.fillStyle = '#2f8fff'; ctx.beginPath(); ctx.arc(x, cy - sz * 0.1, sz * 0.2, Math.PI, 0); ctx.fill();          
+    ctx.fillRect(x - sz * 0.28, cy - sz * 0.12, sz * 0.56, sz * 0.06);                                                  
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(x - sz * 0.03, cy - sz * 0.3, sz * 0.06, sz * 0.19);                        
+    plus(cx + sz * 0.33, cy - sz * 0.2, '#7dff9b');
+  } else if (kind === 'income') {   
+    for (let k = 0; k < 3; k++) { const y = cy + sz * 0.32 - k * sz * 0.13;
+      ctx.fillStyle = '#9a6a08'; ctx.beginPath(); ctx.ellipse(cx, y + 3, sz * 0.36, sz * 0.12, 0, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#f5b800'; ctx.beginPath(); ctx.ellipse(cx, y, sz * 0.36, sz * 0.12, 0, 0, 6.28); ctx.fill(); }
+    drawCoin(cx, cy - sz * 0.12, sz * 0.3);
   }
 }
 
@@ -1163,12 +1175,13 @@ function drawMenu() {
     ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
     ctx.strokeStyle = can ? s.col : '#3a4260'; ctx.lineWidth = 2.5; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
     const cx = r.x + r.w / 2;
-    drawIcon(s.icon, cx, r.y + 30, 34);
-    txt(s.eff(lv), cx, r.y + 62, 15, '#fff');
-    for (let k = 0; k < 5; k++) { ctx.fillStyle = k < lv % 5 || (lv > 0 && lv % 5 === 0) ? s.col : '#3a4260'; ctx.beginPath(); ctx.arc(cx - 20 + k * 10, r.y + 78, 3.2, 0, 6.28); ctx.fill(); }   
+    drawIcon(s.icon, cx, r.y + 32, 36);
+    txt(s.eff(lv), cx, r.y + 68, 16, '#fff');
+    
     if (lv > 0) { ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(r.x + r.w - 6, r.y + 6, 10, 0, 6.28); ctx.fill(); txt(String(lv), r.x + r.w - 6, r.y + 7, 11, '#fff'); }
-    ctx.fillStyle = can ? '#ffd84a' : '#3a4260'; rrect(r.x + 8, r.y + 86, r.w - 16, 20, 10); ctx.fill();
-    txt('● ' + cost, cx, r.y + 96, 12, can ? '#1a1f33' : '#8890a8', 'center');
+    ctx.fillStyle = can ? '#10142a' : 'rgba(40,46,70,0.9)'; rrect(r.x + 8, r.y + 84, r.w - 16, 22, 11); ctx.fill();
+    if (can) { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 1.5; rrect(r.x + 8, r.y + 84, r.w - 16, 22, 11); ctx.stroke(); }
+    drawCoin(r.x + 22, r.y + 95, 7); txt(String(cost), cx + 7, r.y + 96, 13, can ? '#ffd84a' : '#8890a8', 'center');   
   });
   txt(VERSION + '   ' + (saveOK ? 'SAVE ○' : 'SAVE ✕'), 10, 618, 10, saveOK ? '#99a' : '#ff8a8a', 'left', 'normal');
   const rb = RESET_BTN, armed = resetArm > performance.now();
@@ -1191,7 +1204,7 @@ function drawResult() {
   
   r.shown = Math.min(r.coins, (r.shown || 0) + Math.max(1, r.coins / 40));
   ctx.fillStyle = 'rgba(0,0,0,0.45)'; rrect(110, 290, 140, 50, 25); ctx.fill();
-  ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(140, 315, 14, 0, 6.28); ctx.fill(); ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(140, 314, 11.5, 0, 6.28); ctx.fill();
+  drawCoin(140, 315, 14);
   txt('+' + Math.floor(r.shown), 200, 316, 26, '#ffd84a');
   buttons = [];
   const play = { x: 60, y: 420, w: 240, h: 60, fn: () => startRun() };

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v36';
+const VERSION = 'v37';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -62,7 +62,8 @@ const CONFIG = {
   SURGE_RANGE: 230, SURGE: 60, SURGE_HOME: 1.5,   
 
   
-  TIRE_SHOW: 10, TIRE_BRITTLE: 5,   
+  TIRE_POW: 0.35,                 
+  TIRE_SHOW: 10, TIRE_BRITTLE: 1.5,      
   TIRE_BASE: 120, TIRE_HP: 40,    
   WEAPON_POW: 1,                  
   
@@ -235,7 +236,8 @@ function slotRed(g, big) {
   return { type: 'add', v: -k, good: false, hitT: 0 };
 }
 
-function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.chunk) * g.mul * (m || 1)) * CONFIG.TIRE_SHOW; return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
+
+function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.chunk) * Math.pow(recPower(g.level) / 10, CONFIG.TIRE_POW) * (m || 1)) * CONFIG.TIRE_SHOW; return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
 
 const WEAPONS = [
   { name: 'GUN',     rate: 1.00, dmg: 1.00, color: '#e8f4ff' },
@@ -539,9 +541,11 @@ function update(g, dt) {
       if (sl.type === 'empty' || (sl.type === 'tire' && sl.hp <= 0)) break;
       b.dead = true;
       if (sl.type === 'tire') {
+        if (sl.t0 == null) sl.t0 = g.t;   
         sl.hp -= tireDmg(b.dmg); sl.hitT = 0.06; sl.coinAcc += tireDmg(b.dmg);
         while (sl.coinAcc >= sl.max / 8) { sl.coinAcc -= sl.max / 8; addCoins(g, 1 + Math.floor(g.level / 2), b.x, row.y - 10); }
         if (sl.hp <= 0) {
+          (g.brk = g.brk || []).push(g.t - sl.t0);
           if (sl.weapon && !sl.got) {   
             sl.got = true; g.wGot++; g.wlv = Math.min(WEAPONS.length - 1, g.wlv + 1);
             if (!SIM) { weaponFx(weapon(g)); burst(zx, row.y, weapon(g).color, 30); sfx('combo'); shake(5); }
@@ -686,7 +690,7 @@ function runSim(bot, level, m, seed) {
   while (!g.over && steps < 60 * 400) { botStep(g, bot, st); update(g, 1 / 60); steps++; }
   SIM = false;
   return { result: g.over, t: +g.t.toFixed(1), N: g.N, peak: g.peak, coins: g.coins, kills: g.kills, wlv: g.wlv, lost: g.stats,
-           wGot: g.wGot, wMiss: g.wMiss, prog: +Math.min(1, g.dist / g.trackEnd).toFixed(2), bossHp: g.boss ? Math.round(g.boss.hp) : null };
+           brk: g.brk ? +(g.brk.reduce((a, b) => a + b, 0) / g.brk.length).toFixed(2) : null, wGot: g.wGot, wMiss: g.wMiss, prog: +Math.min(1, g.dist / g.trackEnd).toFixed(2), bossHp: g.boss ? Math.round(g.boss.hp) : null };
 }
 function withCfg(cfg, fn) {
   const saved = {};
@@ -1242,7 +1246,8 @@ function init3D() {
     const unitHead = new T.InstancedMesh(new T.SphereGeometry(0.21, 10, 8), M(0x9cc9ff), 260);
     const enemyBody = new T.InstancedMesh(new T.ConeGeometry(0.95, 2.3, 10), B(0xffffff), 500);    
     const enemyHorn = new T.InstancedMesh(new T.ConeGeometry(0.55, 1.5, 8), B(0xffe14a), 500);     
-    const enemyEye = new T.InstancedMesh(new T.SphereGeometry(0.16, 6, 5), B(0x2a0e05), 1000);
+    
+    const enemyEye = new T.InstancedMesh(new T.SphereGeometry(0.11, 6, 5), B(0x6b2408), 1000);
     const bulletIM = new T.InstancedMesh(new T.SphereGeometry(0.13, 8, 6), B(0xbfefff, { transparent: true, opacity: 0.85 }), 700);      
     
     const gc = document.createElement('canvas'); gc.width = gc.height = 64; const gx = gc.getContext('2d'), gr = gx.createRadialGradient(32, 32, 0, 32, 32, 32);

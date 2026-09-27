@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v54';
+const VERSION = 'v55';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -44,11 +44,11 @@ const CONFIG = {
   
   GATE_PER_SEC: 7,
   DIV_NEED: 30,                   
-  BLUE_MIN: 5, BLUE_MAX: 14,      
+  BLUE_MIN: 7, BLUE_MAX: 18,      
   
   RANGE: 400,   
   MOVE_RATE: 0.6,                 
-  RED_MIN: 12, RED_MAX: 22,       
+  RED_MIN: 16, RED_MAX: 30,       
   MUL_RATE: 0.15,                 
   GATE_GROW: 0.25,                
   ROW_EVERY: 1,                      
@@ -81,6 +81,11 @@ const CONFIG = {
   HOUSE_FIRE: false,              
   GATE_OBST_HP: 0.7,              
   ARMY_W: 120,                    
+  
+  ROW_W: [0.30, 0.45, 0.70, 0.80, 0.90, 0.93],
+  TUTOR_RED: [30, 8],             
+  GUARD_HP: 0.8,                  
+  FINAL_ROWS: 3,                  
   OPEN_GROW: 0.6,                 
   SQUAD_AFTER: 1.0,               
   CHUNKS: 6,                      
@@ -327,27 +332,43 @@ function freeRow(g, c) {
   const obst = () => { const t = slotTire(g, C.GATE_OBST_HP); t.sign = true; return t; };   
   const fixed = x => cut(x, 0, 0, 0, 0, 1, 0), L1 = L + LANE_W, L2 = L + LANE_W * 2;
   const mid = (a2, b2) => (a2 + b2) / 2;
-  if (c < 2) { const f = win([red(), blue(), red()], 120); f.blueX = f.cuts[0].x; return f; }   
-  if (r < 0.15) return { parts: [red(1.2)], cuts: [] };                                            
-  if (r < 0.37) {                                                                                   
+  
+  const fix = v => ({ type: 'add', v, good: v > 0, hitT: 0 });
+  if (g.level === 1 && c < 3) {
+    if (c === 0) { const f = win([red(), blue(2), red()], 120); f.blueX = f.cuts[0].x; return f; }
+    return { parts: [fix(c === 1 ? -C.TUTOR_RED[0] : -C.TUTOR_RED[1])], cuts: [] };
+  }
+  
+  const W = C.ROW_W;
+  
+  if (c < 2) { const q = rng(); return q < 0.5 ? freeRowAt(W[2] + (W[3] - W[2]) * rng()) : freeRowAt(W[3] + (W[4] - W[3]) * rng()); }
+  return freeRowAt(r);
+  function freeRowAt(r) {
+  if (r < W[0]) return { parts: [red(1.2)], cuts: [] };                                            
+  if (r < W[1]) {                                                                                   
+    const k = rng() < 0.5 ? 0 : 2, gb = rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : blue(1.3);
+    return { parts: k === 0 ? [gb, red(1.2)] : [red(1.2), gb], cuts: [fixed(k === 0 ? L1 : L2)], blueX: laneX(k), guard: k };
+  }
+  if (r < W[2]) {                                                                                   
+    const k = ri(0, 2);
+    if (k === 0) return { parts: [obst(), red(1.1)], cuts: [fixed(L1)] };
+    if (k === 2) return { parts: [red(1.1), obst()], cuts: [fixed(L2)] };
+    return { parts: [red(0.8), obst(), red(0.8)], cuts: [fixed(L1), fixed(L2)] };
+  }
+  if (r < W[3]) {                                                                                   
     const x = rr(110, 250), bl = rng() < 0.5;
     return { parts: bl ? [blue(0.9), red(1.3)] : [red(1.3), blue(0.9)], cuts: [one(x)], blueX: bl ? mid(L, x) : mid(x, R) };
   }
-  if (r < 0.55) { const f = win([red(1.2), rng() < 0.25 ? { type: 'mul', v: 2, good: true, hitT: 0 } : blue(), red(1.2)], rr(50, 100)); f.blueX = f.cuts[0].x; return f; }   
-  if (r < 0.67) {                                                                                   
+  if (r < W[4]) { const f = win([red(1.2), rng() < 0.1 ? { type: 'mul', v: 2, good: true, hitT: 0 } : blue(), red(1.2)], rr(50, 100)); f.blueX = f.cuts[0].x; return f; }   
+  if (r < W[5]) {                                                                                   
     const w = rr(115, 150), cx = rr(L + w / 2 + 50, R - w / 2 - 50), ph = rr(0, 6.28), amp = move ? rr(15, 35) : 0;
     const left = rng() < 0.5;
     return { parts: [blue(0.6), red(1.4), blue(0.6)], cuts: [cut(cx, -1, w, 0, amp, 0.8, ph), cut(cx, 1, w, 0, amp, 0.8, ph)], blueX: left ? mid(L, cx - w / 2) : mid(cx + w / 2, R) };
   }
-  if (r < 0.82) {                                                                                   
-    const k = ri(0, 2);
-    if (k === 0) return { parts: [obst(), red(1.1)], cuts: [fixed(L1)] };
-    if (k === 2) return { parts: [red(1.1), obst()], cuts: [fixed(L2)] };
-    return { parts: [red(0.8), obst(), red(0.8)], cuts: [fixed(L1), fixed(L2)] };   
-  }
   const k = rng() < 0.5 ? 0 : 2, bl = rng() < 0.5;                                                  
   if (k === 0) return { parts: [obst(), bl ? blue() : red(1.2), bl ? red(1.2) : blue()], cuts: [fixed(L1), fixed(L2)], blueX: bl ? mid(L1, L2) : mid(L2, R) };
   return { parts: [bl ? blue() : red(1.2), bl ? red(1.2) : blue(), obst()], cuts: [fixed(L1), fixed(L2)], blueX: bl ? mid(L, L1) : mid(L1, L2) };
+  }
 }
 function buildTrack(g) {
   const C = CONFIG, G = C.TRACK_GAP, T = [];
@@ -424,14 +445,22 @@ function buildTrack(g) {
     }
     
     const fr = freeRow(g, c);
-    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2)], rows, cols, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
+    
+    const tut = g.level === 1 && c < 3, bl = fr.blueX != null && !tut, strong = bl && fr.guard == null;
+    const sl = fr.guard != null ? (fr.guard + ri(1, 2)) % 3 : fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2);
+    T.push({ dist: d += (c === 0 ? 80 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? 1 : 0), cols, brute: strong && g.level >= 3 && rng() < 0.5, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
+    if (fr.guard != null) T.push({ dist: d + G * 0.55, kind: 'row', lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
     T.push({ dist: d += G, kind: 'row', free: fr });
     if (c >= 1 && rng() < C.FILLER) T.push({ dist: d + G * 0.45, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });   
   }
   g.ramp = 1; g.chunk = chunks;
   
   
-  if (g.level > 1) for (let r = 0; r < 3; r++) { const open = ri(0, 2); T.push({ dist: d += G * 0.7, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : slotTire(g, 0.25 + 0.1 * r)) }); }
+  
+  if (g.level > 1) {
+    T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows: C.FINAL_ROWS + Math.min(6, g.level - 1), cols: 4, brute: g.level >= 3 });
+    const tl = ri(0, 2); T.push({ dist: d += G * 0.9, kind: 'row', lanes: [0, 1, 2].map(i => i === tl ? slotTire(g, 0.35) : { type: 'empty' }) });
+  }
   T.push({ dist: d += G, kind: 'boss' });
   return T;
 }
@@ -461,7 +490,7 @@ function trackFlow(g, dt, scroll) {
     const sp = g.track[g.ti++];
     if (sp.kind === 'row') { const row = { y: -40, lanes: sp.lanes || [], free: sp.free, done: false }; row.segs = rowSegs(row, g.t); g.rows.push(row); }
     else if (sp.kind === 'wall') g.walls.push({ y: -40, len: sp.len, lane: null });
-    else if (sp.kind === 'squad') sp.lanes.forEach((l, k) => spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === 1, sp.soft, k === 0 && sp.mix));
+    else if (sp.kind === 'squad') sp.lanes.forEach((l, k) => spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === (sp.lanes.length === 1 ? 0 : 1), sp.soft, k === 0 && sp.mix));   
     else if (sp.kind === 'boss') spawnBoss(g);   
   }
 }
@@ -723,6 +752,7 @@ function botStep(g, bot, st) {
     return;
   }
   if (g.lock != null) { g.target = laneX(g.lock); return; }
+  if (g.boss && !g.rows.some(r => !r.done)) { g.target = g.boss.x; return; }   
   const W = weapon(g), shots = g.units.length * C.SHOT_RATE * g.rateMul * W.rate, dps = g.N * g.power * g.rateMul * W.rate * W.dmg;
   const w = g.walls.find(w => w.lane == null && w.y < C.LEADER_Y && w.y > C.LEADER_Y - 420);
   const rows = g.rows.filter(r => !r.done && r.y < C.LEADER_Y && (w ? r.y >= w.y - w.len - 5 : true)).sort((a, b) => b.y - a.y).slice(0, w ? 3 : 1);

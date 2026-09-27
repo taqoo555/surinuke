@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>WARS</title>
+<title>FIREFIGHTER</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#101320">
@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v37';
+const VERSION = 'v38';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -54,7 +54,7 @@ const CONFIG = {
   ROW_EVERY: 1,                      
 
   
-  LEVEL_GROW: 1.18,               
+  LEVEL_GROW: 1.15,               
   GRUNT_HP: 2, BRUTE_HP: 45,   
   ENEMY_VY: 10,                   
   
@@ -63,7 +63,8 @@ const CONFIG = {
 
   
   TIRE_POW: 0.35,                 
-  TIRE_SHOW: 10, TIRE_BRITTLE: 1.5,      
+  TIRE_SHOW: 10, TIRE_BRITTLE: 1.0,   
+        
   TIRE_BASE: 120, TIRE_HP: 40,    
   WEAPON_POW: 1,                  
   
@@ -256,6 +257,11 @@ function slotWeaponTire(g) {
   const hp = Math.round(CONFIG.WEAPON_HP * g.mul * (g.wk === 0 ? CONFIG.WEAPON_FIRST : 1 + 0.5 * (g.wk - 1))) * CONFIG.TIRE_SHOW;   
   g.wk++;
   return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0, weapon: true };
+}
+
+function hpText(sl) {
+  sl.disp = sl.disp == null ? sl.hp : sl.disp + (sl.hp - sl.disp) * 0.35;
+  return Math.max(0, Math.ceil(sl.disp)).toLocaleString('en-US');
 }
 const tireDmg = d => d * CONFIG.TIRE_SHOW * CONFIG.TIRE_BRITTLE;   
 
@@ -952,7 +958,7 @@ function drawTire(g, sl, cx, y) {
     ctx.strokeStyle = '#3a3f4e'; ctx.lineWidth = 2; ctx.stroke();
   }
   ctx.fillStyle = '#6b7080'; ctx.beginPath(); ctx.ellipse(cx, y - 6, rw * 0.45, 4, 0, 0, 6.28); ctx.fill();
-  txt(String(Math.ceil(sl.hp)), cx, y + 24, sl.hitT > 0 ? 20 : 18, '#ff9a5a');   
+  txt(hpText(sl), cx, y + 24, sl.hitT > 0 ? 20 : 18, '#ff9a5a');   
   if (sl.weapon && g.wlv < WEAPONS.length - 1) {   
     
     const nx = WEAPONS[Math.min(WEAPONS.length - 1, g.wlv + 1)], gy = y - 30 + Math.sin(performance.now() / 200) * 2;
@@ -1103,7 +1109,8 @@ function drawMenu() {
   bgY += 20 / 60;
   drawRoad();
   coinPill(10, 24, meta.coins);
-  txt('WARS', 180, 96, 44, '#fff36b');   
+  
+  txt('FIREFIGHTER', 180, 96, 36, '#fff36b');
   txt('LEVEL ' + meta.level, 180, 150, 30, '#fff');
   txt(stageOf(meta.level).name, 180, 184, 16, '#ffd84a');   
   { const pw = powerOf(meta), rec = recPower(meta.level), ok = pw >= rec;   
@@ -1145,7 +1152,7 @@ function drawMenu() {
 const LOSS_ROWS = [
   ['gate',  'RED GATES', 'Shoot red gates until they turn blue'],
   ['enemy', 'ENEMIES',   'Dodge into the thinner lane and shoot first'],
-  ['tire',  'TIRES',     'Tires crush everyone who runs into them — break them or switch lanes'],
+  ['tire',  'OBSTACLES', 'Obstacles crush anyone who hits them. Break or dodge'],   
   ['boss',  'BOSS',      'Grow the army bigger than the boss number'],
 ];
 function drawResult() {
@@ -1174,6 +1181,9 @@ function drawResult() {
   if (!r.cleared) {
     txt('TIP', 180, 420, 11, '#fff36b');
     txt(worst[2], 180, 440, 12, '#fff', 'center', '600');
+    
+    const pw = powerOf(meta), rec = recPower(r.level);
+    txt('POWER ' + pw.toLocaleString('en-US') + '  /  recommended ' + rec.toLocaleString('en-US'), 180, 466, 12, pw >= rec ? '#7dff9b' : '#ffb35a', 'center', '700');
   }
   buttons = [];
   const go = { x: 60, y: 500, w: 240, h: 60, fn: () => { scene = 'menu'; } };
@@ -1419,7 +1429,7 @@ function drawLabels3D(g) {
       if (sl.type === 'tire') {
         if (sl.hp <= 0) continue;
         const [px, py, k] = P3(cx, row.y, 2.2);
-        txt(String(Math.ceil(sl.hp)), px, py - 8 * k, (sl.hitT > 0 ? 19 : 17) * k, '#ff9a5a');
+        txt(hpText(sl), px, py - 8 * k, (sl.hitT > 0 ? 21 : 18) * k, '#ff9a5a');
         continue;
       }
       if (row.done) continue;

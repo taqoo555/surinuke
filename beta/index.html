@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v69';
+const VERSION = 'v70';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -189,9 +189,10 @@ const SHOP_V24 = [
 
 
 const UNITS = [
-  { key: 'lvGuard',  icon: 'guard',  name: 'GUARD',  col: '#ff6a5a', unit: true, base: 60, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
   
-  { key: 'lvRanged', icon: 'ranged', name: 'SNIPER', col: '#7dff9b', unit: true, base: 100, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
+  { key: 'lvGuard',  icon: 'guard',  name: 'GUARD',  col: '#ff6a5a', unit: true, base: 300, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
+  
+  { key: 'lvRanged', icon: 'ranged', name: 'SNIPER', col: '#7dff9b', unit: true, base: 300, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
 ];
 
 const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[2], SHOP_V24[3], ...UNITS];
@@ -1842,6 +1843,14 @@ function init3D() {
     for (const [fx, fy, fz, fs, col] of [[0, 2.7, 0, 1.3, 0xff6a1a], [-0.8, 2.3, 0.2, 0.9, 0xff3b1a], [0.8, 2.3, -0.1, 1.0, 0xff7a1a], [0, 3.0, 0.1, 0.8, 0xffc21a], [-0.65, 1.4, 1.0, 0.45, 0xffc21a], [0.65, 1.4, 1.0, 0.45, 0xffc21a]]) {
       const f = new T.Mesh(new T.ConeGeometry(0.45 * fs, 1.4 * fs, 8), B(col)); f.position.set(fx, fy, fz); boss.add(f); bossFlames.push({ f, ph: fx * 3 + fy });
     }
+    
+    const addLot = (gr, col) => {
+      const lot = new T.Mesh(new T.BoxGeometry(12, 0.08, 16), M(col)); lot.position.set(0, 0.04, -6.8); lot.receiveShadow = true; gr.add(lot);
+      const walk = new T.Mesh(new T.BoxGeometry(12, 0.1, 0.9), M(0xd4d2c8)); walk.position.set(0, 0.05, 1.65); walk.receiveShadow = true; gr.add(walk);
+      const curb = new T.Mesh(new T.BoxGeometry(12, 0.16, 0.12), M(0xf2f0e8)); curb.position.set(0, 0.08, 2.15); gr.add(curb);
+    };
+    addLot(boss, 0x7ccf63);
+    for (const fx of [-1.9, 1.9]) { const f = new T.Mesh(new T.BoxGeometry(0.06, 0.35, 0.06), M(0xf4f1ea)); f.position.set(fx, 0.18, 1.25); boss.add(f); }   
     boss.visible = false; scene3.add(boss);
     
     boss.userData = { flash: bossBody.material, base: 0xe8c9a0, flames: bossFlames };
@@ -1904,6 +1913,7 @@ function init3D() {
     for (const [wx6, wy6] of [[-0.6, 3.6], [0.1, 3.0], [0.6, 3.8], [-0.4, 2.4]]) { const glow = new T.Mesh(new T.BoxGeometry(0.45, 0.4, 0.05), B(0xffa030)); glow.position.set(wx6, wy6, 0.92); tower.add(glow); }
     const towerFlames = mkFlames(tower, [[0, 5.2, 0, 1.3, 0xff6a1a], [-0.7, 4.9, 0.2, 0.9, 0xff3b1a], [0.7, 4.9, -0.1, 1.0, 0xff7a1a], [-0.6, 4.0, 1.0, 0.5, 0xffc21a], [0.6, 4.2, 1.0, 0.5, 0xffc21a], [0.1, 3.4, 1.0, 0.45, 0xff7a1a]]);
     tower.userData = { flash: twMat, base: 0xc9d7e8, flames: towerFlames };
+    addLot(tower, 0xcfc8bc);   
     for (const o of [truck, majin, dragon, tower]) { o.traverse(m => { if (m.isMesh) m.castShadow = true; }); o.visible = false; scene3.add(o); }
     const bosses = { house: boss, truck, majin, dragon, tower };
     

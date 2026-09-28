@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v77';
+const VERSION = 'v78';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -90,7 +90,7 @@ const CONFIG = {
   BOSS_MIN_SEC: 6,                
   BIG_BOSS: 1.4,                  
   HEAD_START: 300,                
-  OPEN1: [3, 4, 0.35],            
+  OPEN1: [2, 4, 0.3],               
   INTRO_T: 1.0,                   
   RAMP0: [0.4, 0.5, 0.7, 0.9],   
   EARLY_GAP: 0.6,                 
@@ -463,18 +463,14 @@ function buildStage1(g) {
     { dist: 60, kind: 'row', free: { parts: [fix(-5), fix(25), fix(-5)], cuts: [cut(180, -1, 120), cut(180, 1, 120)] } },
     { dist: 290, kind: 'squad', lanes: [0, 1, 2], rows: C.OPEN1[0], cols: C.OPEN1[1], hpMul: C.OPEN1[2], brute: true },
     
-    { dist: 480, kind: 'squad', lanes: [0, 2], rows: 2, cols: 4, soft: true },
-    { dist: 620, kind: 'squad', lanes: [1], rows: 3, cols: 4, soft: true },
+    { dist: 560, kind: 'squad', lanes: [1], rows: 2, cols: 4, hpMul: 0.3 },
     { dist: 850, kind: 'row', free: { parts: [fix(-C.TUTOR_RED[0])], cuts: [] } },
-    { dist: 960, kind: 'squad', lanes: [0, 1, 2], rows: 2, cols: 4, hpMul: 0.3 },   
-    { dist: 1130, kind: 'squad', lanes: [0], rows: 3, cols: 4, hpMul: 0.3 },
+    { dist: 1100, kind: 'squad', lanes: [0, 2], rows: 2, cols: 3, hpMul: 0.3 },
     { dist: 1350, kind: 'row', free: { parts: [fix(15), fix(-12)], cuts: [cut(L1, 0, 0)] } },
-    { dist: 1450, kind: 'squad', lanes: [1, 2], rows: 2, cols: 4, hpMul: 0.4 },
-    { dist: 1600, kind: 'squad', lanes: [2], rows: 3, cols: 5, soft: true, brute: true },
+    { dist: 1575, kind: 'squad', lanes: [1, 2], rows: 2, cols: 3, hpMul: 0.35, brute: true },
     
     { dist: 1800, kind: 'row', free: { parts: [fix(-15), { type: 'mul', v: 2, good: true, hitT: 0 }], cuts: [cut(L2, 0, 0)] } },
-    { dist: 1900, kind: 'squad', lanes: [0, 1], rows: 2, cols: 4, hpMul: 0.6 },
-    { dist: 2020, kind: 'squad', lanes: [0, 1, 2], rows: 3, cols: 4, hpMul: 0.6 },
+    { dist: 2020, kind: 'squad', lanes: [0, 1, 2], rows: 2, cols: 4, hpMul: 0.5 },
     { dist: 2020 + C.TRACK_GAP * C.BOSS_AFTER, kind: 'boss' },
   ];
   return T;
@@ -2208,14 +2204,14 @@ function render3D(g, sx, sy) {
   for (const im of [R.unitBody, R.unitHead, R.unitBrim, R.unitStripe, R.unitTank]) im.instanceMatrix.needsUpdate = true;
   
   n = 0; let h = 0;
-  const flame = (x, y, r, col, ph) => {
-    if (n >= 500) return;
+  const flame = (x, y, r, col, ph, lift, noEye) => {   
+    if (n >= 500) return; lift = lift || 0;
     const fl = 1 + 0.16 * Math.sin(g.t * 13 + ph) + 0.1 * Math.sin(g.t * 23 + ph * 1.7), sw = Math.sin(g.t * 7 + ph) * 0.14 + Math.sin(g.t * 17 + ph) * 0.06;   
-    d.rotation.set(0, 0, sw); d.position.set(wx(x), r * 1.1 * fl, wz(y)); d.scale.set(r, r * fl, r); d.updateMatrix(); R.enemyBody.setMatrixAt(n, d.matrix);
+    d.rotation.set(0, 0, sw); d.position.set(wx(x), lift + r * 1.1 * fl, wz(y)); d.scale.set(r, r * fl, r); d.updateMatrix(); R.enemyBody.setMatrixAt(n, d.matrix);
     R.col.setHex(col); R.enemyBody.setColorAt(n, R.col);
-    d.position.set(wx(x), r * 0.8 * fl, wz(y) + r * 0.15); d.updateMatrix(); R.enemyHorn.setMatrixAt(n, d.matrix);
+    d.position.set(wx(x), lift + r * 0.8 * fl, wz(y) + r * 0.15); d.updateMatrix(); R.enemyHorn.setMatrixAt(n, d.matrix);
     d.rotation.set(0, 0, 0); d.scale.set(r, r, r);
-    for (const sgn of [-1, 1]) { if (h >= 1000) break; d.position.set(wx(x) + sgn * r * 0.3, r * 0.75, wz(y) + r * 0.7); d.updateMatrix(); R.enemyEye.setMatrixAt(h++, d.matrix); }
+    if (!noEye) for (const sgn of [-1, 1]) { if (h >= 1000) break; d.position.set(wx(x) + sgn * r * 0.3, r * 0.75, wz(y) + r * 0.7); d.updateMatrix(); R.enemyEye.setMatrixAt(h++, d.matrix); }
     d.rotation.set(-Math.PI / 2, 0, 0); d.position.set(wx(x), 0.03, wz(y)); d.scale.set(r * 2.6 * fl, r * 2.6 * fl, 1); d.updateMatrix(); R.glowIM.setMatrixAt(n, d.matrix);   
     d.rotation.set(0, 0, 0); d.quaternion.copy(R.cam.quaternion); d.position.set(wx(x), r * 1.1, wz(y)); d.scale.set(r * 3.4 * fl, r * 3.4 * fl, 1); d.updateMatrix(); R.haloIM.setMatrixAt(n, d.matrix); d.quaternion.set(0, 0, 0, 1);   
     n++;
@@ -2225,6 +2221,8 @@ function render3D(g, sx, sy) {
     if (e.kind === 'hydrant') { const hy = R.hydrants.get(), k = e.r / U3 * 2.8; hy.position.set(wx(e.x), 0, wz(e.y)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(e.flash > 0 ? 0xffffff : 0xd8262a); continue; }
     flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'lava' ? lavaCol(e) : e.purple && e.kind === 'grunt' ? ECOL3.purple : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37);
   }
+  
+  for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }
   
   for (const { sp, ahead } of AH.squads) for (const lane of sp.lanes) {
     const cols = sp.cols || 6, x0 = laneX(lane) - LANE_W * 0.4;
@@ -2255,7 +2253,6 @@ function render3D(g, sx, sy) {
   
   for (const em of g.embers || []) {
     const k = clamp(em.t / em.T, 0, 1), x = em.x0 + (em.tx - em.x0) * k, y = em.y0 + (em.ty - em.y0) * k;
-    const b = R.embers.get(); b.position.set(wx(x), 0.6 + Math.sin(k * Math.PI) * 5, wz(y)); const bs = 1 + 0.3 * Math.sin(g.t * 20); b.scale.set(bs, bs, bs);
     const rg = R.rings.get(), rs = CONFIG.EMBER_R / U3 * (1.4 - 0.4 * k); rg.position.set(wx(em.tx), 0.05, wz(em.ty)); rg.scale.set(rs, rs, rs); rg.material.opacity = 0.3 + 0.6 * k;
   }
   R.embers.end(); R.rings.end();
@@ -2285,8 +2282,7 @@ function render3D(g, sx, sy) {
     const fk = Bs.rage ? 1.4 : 1;
     for (const bf of u.flames) { const k = 1 + 0.18 * Math.sin(g.t * 11 + bf.ph) + 0.08 * Math.sin(g.t * 23 + bf.ph); bf.f.scale.set(fk, k * fk, fk); }   
     const pk = Math.max(0, Bs.punch || 0) / 0.12; bo.scale.set(r * (1 + 0.07 * pk), r * (1 - 0.05 * pk), r * (1 + 0.07 * pk));   
-    const au = R.bossAura; au.visible = true; au.quaternion.copy(R.cam.quaternion); au.position.set(bo.position.x, r * 2.2, bo.position.z);
-    const as = r * (7 + 0.6 * Math.sin(g.t * 3)) * (Bs.rage ? 1.25 : 1); au.scale.set(as, as, 1); au.material.color.setHex(Bs.rage ? 0xff7050 : 0xffb870);   
+    
     if (u.arms) for (const a of u.arms) a.arm.rotation.z = a.sx * (0.25 + 0.2 * Math.sin(g.t * 3 + a.sx));   
     if (u.wings) for (const w of u.wings) w.w.rotation.z = w.sx * 0.25 * Math.sin(g.t * 4);   
     if (bk === 'majin') bo.position.y = 0.15 * Math.abs(Math.sin(g.t * 3));

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v66';
+const VERSION = 'v67';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -127,6 +127,7 @@ const CONFIG = {
   GUARD_BLOCK: 3, GUARD_REGEN: 6,   
   KAMI_CD: 8, KAMI_R: 60,         
   RANGED_EVERY: 1.0, RANGED_DMG: 5, RANGED_SPEED: 380,   
+  SPECIAL_GAP: 34,                
   SPECIAL_FRONT: 18,              
   UP_ARMY: 1,                     
   COST_BASE: 12, COST_GROW: 1.25,    
@@ -187,7 +188,7 @@ const SHOP_V24 = [
 
 const UNITS = [
   { key: 'lvGuard',  icon: 'guard',  name: 'GUARD',  col: '#ff6a5a', unit: true, base: 60, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
-  { key: 'lvKami',   icon: 'kami',   name: 'BOMBER', col: '#ffd84a', unit: true, base: 80, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
+  
   { key: 'lvRanged', icon: 'ranged', name: 'SNIPER', col: '#7dff9b', unit: true, base: 100, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
 ];
 
@@ -197,6 +198,9 @@ function powerOf(m) { const C = CONFIG; return Math.round(10 * (1 + C.UP_DMG * m
 
 function recPower(level) { return Math.max(10, Math.round(7.5 * level * level / 5) * 5); }   
 function shopCost(s, m) { return Math.round((s.base || CONFIG.COST_BASE) * Math.pow(s.grow || CONFIG.COST_GROW, m[s.key])); }
+
+const tierCol = lv => lv >= 7 ? 0xffc933 : lv >= 4 ? 0xc8d0dc : 0x9a6a3a;
+const tierCss = lv => '#' + tierCol(lv).toString(16).padStart(6, '0');
 
 const guardMax = lv => CONFIG.GUARD_BLOCK + (lv - 1);                                   
 const guardRegen = lv => Math.max(2, CONFIG.GUARD_REGEN - (lv - 1) * 0.8);              
@@ -212,7 +216,7 @@ function newRun(level, m, seed) {
   const g = {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
     t: 0, over: null,
-    lvGuard: m.lvGuard || 0, lvKami: m.lvKami || 0, lvRanged: m.lvRanged || 0,   
+    lvGuard: m.lvGuard || 0, lvKami: 0, lvRanged: m.lvRanged || 0,   
     guardHp: m.lvGuard ? guardMax(m.lvGuard) : 0, guardT: 0, kamiReady: !!m.lvKami, kamiT: 0, rangedT: 1, missiles: [],
     N: C.START_UNITS + C.UP_ARMY * m.lvArmy,   
     power: 1 + C.UP_DMG * m.lvDmg, rateMul: 1 + C.UP_RATE * m.lvRate, income: 1 + C.UP_INCOME * m.lvIncome,
@@ -250,7 +254,7 @@ function formW(g) {
 }
 function layoutCrowd(g, dt) {
   const C = CONFIG, items = crowdItems(g), rowW = formW(g);
-  const rows = []; let row = [], x = 0, y = C.LEADER_Y + (g.lvGuard || g.lvKami ? C.SPECIAL_FRONT : 0), h = 0;   
+  const rows = []; let row = [], x = 0, y = C.LEADER_Y + (g.lvGuard ? C.SPECIAL_FRONT : 0), h = 0;   
   for (const it of items) {
     if (x + it.d > rowW && row.length) { rows.push({ row, w: x, y, h }); y += h; row = []; x = 0; h = 0; }
     it.ox = x + it.d / 2; x += it.d; h = Math.max(h, it.d); row.push(it);
@@ -566,9 +570,10 @@ function spawnSquad(g, lane, rows, cols, brute, soft, mix) {
 
 function specPos(g, k) {
   const C = CONFIG;
-  if (k === 'guard') return { x: g.lx, y: C.LEADER_Y - 4 };
+  
+  if (k === 'guard') return { x: g.lx, y: C.LEADER_Y + C.SPECIAL_FRONT - C.SPECIAL_GAP };
   if (k === 'kami') return { x: g.lx + (g.lvGuard ? 16 : 0), y: C.LEADER_Y + (g.lvGuard ? 8 : 0) };
-  return { x: g.lx, y: C.LEADER_Y + g.cDepth + 14 };
+  return { x: g.lx, y: C.LEADER_Y + g.cDepth + C.SPECIAL_GAP };
 }
 function kamiBurst(g, x, y) {
   g.kamiReady = false; g.kamiT = kamiCd(g.lvKami);
@@ -583,7 +588,7 @@ function updateSpecials(g, dt) {
   if (g.lvRanged) {
     g.rangedT -= dt;
     const pickT = () => { let best = null, bd = 1e9; const p = specPos(g, 'ranged');
-      for (const e of g.enemies) if (e.hp > 0 && e.y > -10 && e.y < C.LEADER_Y) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
+      for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.y > -10 && e.y < C.LEADER_Y) {    const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
       if (!best && g.boss && g.boss.hp > 0 && g.boss.y > 0) best = g.boss; return best; };
     if (g.rangedT <= 0) { const t = pickT(); if (t) { const p = specPos(g, 'ranged'); g.missiles.push({ x: p.x, y: p.y - 6, vx: 0, vy: -C.RANGED_SPEED, t, life: 0 }); g.rangedT = rangedEvery(g.lvRanged); if (!SIM && rng2() < 0.5) sfx('shot'); } else g.rangedT = 0.1; }
     for (const m of g.missiles) {
@@ -1172,7 +1177,7 @@ function btnHit(b, x, y) { return x >= b.x && x <= b.x + b.w && y >= b.y && y <=
 let buttons = [];
 const MUTE_BTN = { x: CONFIG.W - 40, y: 60, w: 32, h: 28 };
 function muteBtn() { MUTE_BTN.x = VB.r - 40; return MUTE_BTN; }   
-function shopBtn(i) { return i < 3 ? { x: 12 + i * 114, y: 440, w: 108, h: 92 } : { x: 12 + (i - 3) * 86, y: 540, w: 80, h: 94 }; }   
+function shopBtn(i) { return i < 3 ? { x: 12 + i * 114, y: 440, w: 108, h: 92 } : { x: 12 + (i - 3) * 114, y: 540, w: 108, h: 92 }; }      
 const PLAY_BTN = { x: 70, y: 376, w: 220, h: 56 };
 function buy(i) {
   const s = SHOP[i], cost = shopCost(s, meta);
@@ -1475,6 +1480,7 @@ function drawMute() {
 
 
 
+let iconLv = 1;   
 function drawIcon(kind, cx, cy, sz) {
   const plus = (x, y, col) => { ctx.fillStyle = col; ctx.fillRect(x - sz * 0.13, y - 2.5, sz * 0.26, 5); ctx.fillRect(x - 2.5, y - sz * 0.13, 5, sz * 0.26); };
   if (kind === 'dmg') {
@@ -1503,14 +1509,14 @@ function drawIcon(kind, cx, cy, sz) {
     ctx.fillStyle = hel; ctx.beginPath(); ctx.ellipse(x, y + r * 0.35, r * 1.2, r * 0.42, 0, 0, 6.28); ctx.fill(); ctx.beginPath(); ctx.arc(x, y, r * 0.95, 0, 6.28); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.4, r * 0.3, r * 0.18, -0.5, 0, 6.28); ctx.fill();
     if (kind === 'guard') {   
-      const sx = x + r * 1.5, sy = y + r * 1.0; ctx.fillStyle = '#6fc3ff'; ctx.beginPath(); ctx.moveTo(sx - r * 0.8, sy - r * 0.9); ctx.lineTo(sx + r * 0.8, sy - r * 0.9); ctx.lineTo(sx + r * 0.8, sy + r * 0.1); ctx.quadraticCurveTo(sx, sy + r * 1.1, sx - r * 0.8, sy + r * 0.1); ctx.closePath(); ctx.fill();
+      const sx = x + r * 1.5, sy = y + r * 1.0; ctx.fillStyle = tierCss(Math.max(1, iconLv)); ctx.beginPath(); ctx.moveTo(sx - r * 0.8, sy - r * 0.9); ctx.lineTo(sx + r * 0.8, sy - r * 0.9); ctx.lineTo(sx + r * 0.8, sy + r * 0.1); ctx.quadraticCurveTo(sx, sy + r * 1.1, sx - r * 0.8, sy + r * 0.1); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
     } else if (kind === 'kami') {   
       const bx = x + r * 1.5, by = y + r * 0.7; ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.arc(bx, by, r * 0.8, 0, 6.28); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(bx - r * 0.25, by - r * 0.3, r * 0.2, 0, 6.28); ctx.fill();
       ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.moveTo(bx, by + r * 0.7); ctx.lineTo(bx - r * 0.2, by + r * 1.1); ctx.lineTo(bx + r * 0.2, by + r * 1.1); ctx.fill();
     } else {   
-      const tx = x + r * 1.6, ty = y + r * 0.5; ctx.strokeStyle = '#3fd46a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tx, ty, r * 0.7, 0, 6.28); ctx.stroke();
+      const tx = x + r * 1.6, ty = y + r * 0.5; ctx.strokeStyle = tierCss(Math.max(1, iconLv)); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(tx, ty, r * 0.7, 0, 6.28); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(tx - r, ty); ctx.lineTo(tx + r, ty); ctx.moveTo(tx, ty - r); ctx.lineTo(tx, ty + r); ctx.stroke();
     }
   } else if (kind === 'income') {   
@@ -1527,7 +1533,7 @@ function drawShop() {
     ctx.strokeStyle = can ? s.col : '#3a4260'; ctx.lineWidth = 2.5; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
     const cx = r.x + r.w / 2;
     txt(s.name, cx, r.y + 12, 10, s.col, 'center', '800');   
-    drawIcon(s.icon, cx, r.y + 36, 30);
+    iconLv = lv; drawIcon(s.icon, cx, r.y + 36, 30);
     txt(s.eff(lv), cx, r.y + 58, 14, '#fff');
     
     if (lv > 0) { ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(r.x + r.w - 6, r.y + 6, 10, 0, 6.28); ctx.fill(); txt(String(lv), r.x + r.w - 6, r.y + 7, 11, '#fff'); }
@@ -1897,14 +1903,14 @@ function init3D() {
       const brim = new T.Mesh(new T.CylinderGeometry(0.3, 0.3, 0.05, 12), M(hel)); brim.position.y = 0.66; gr.add(brim);
       const tank = new T.Mesh(new T.BoxGeometry(0.22, 0.34, 0.14), M(0x8fb3e0)); tank.position.set(0, 0.38, 0.24); gr.add(tank);
       extra(gr); gr.traverse(o => { if (o.isMesh) o.castShadow = true; }); gr.visible = false; scene3.add(gr); return gr; };
-    const shieldMat = M(0x6fc3ff, { transparent: true, opacity: 0.75 });
+    const shieldMat = M(0x9a6a3a), cannonMat = M(0x9a6a3a);   
     const spec = {
       guard: mkSpec(0xff5a4a, gr => { const sh = new T.Mesh(new T.BoxGeometry(0.7, 0.6, 0.06), shieldMat); sh.position.set(0, 0.4, -0.3); gr.add(sh); gr.userData.shield = sh; }),
       kami: mkSpec(0xffc21a, gr => { const b = new T.Mesh(new T.SphereGeometry(0.24, 12, 10), M(0x3fa9ff, { transparent: true, opacity: 0.9 })); b.position.set(0.25, 0.75, 0.1); gr.add(b); }),
-      ranged: mkSpec(0x3fd46a, gr => { const c = new T.Mesh(new T.CylinderGeometry(0.07, 0.09, 0.6, 8), M(0x9aa3b0)); c.rotation.x = Math.PI / 2 - 0.5; c.position.set(0.18, 0.75, -0.1); gr.add(c); }),
+      ranged: mkSpec(0x3fd46a, gr => { const c = new T.Mesh(new T.CylinderGeometry(0.08, 0.1, 0.7, 8), cannonMat); c.rotation.x = Math.PI / 2 - 0.5; c.position.set(0.18, 0.78, -0.12); gr.add(c); }),
     };
     const missiles = pool(() => new T.Mesh(new T.SphereGeometry(0.2, 10, 8), B(0x7fe8ff)));
-    Object.assign(R3, { bosses, hydrants, officeG, homeG, embers, rings, spec, missiles });
+    Object.assign(R3, { bosses, hydrants, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat });
     Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody, bossFlames,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
@@ -2093,7 +2099,8 @@ function render3D(g, sx, sy) {
     const on = g[{ guard: 'lvGuard', kami: 'lvKami', ranged: 'lvRanged' }[k]] > 0 && !g.over && (k !== 'kami' || g.kamiReady), o = R.spec[k];
     o.visible = on; if (!on) continue;
     const p = specPos(g, k); o.position.set(wx(p.x), 0, wz(p.y)); o.scale.set(1.35, 1.35, 1.35);
-    if (k === 'guard') o.userData.shield.visible = g.guardHp > 0;
+    if (k === 'guard') { o.userData.shield.visible = g.guardHp > 0; R.shieldMat.color.setHex(tierCol(g.lvGuard)); }
+    if (k === 'ranged') R.cannonMat.color.setHex(tierCol(g.lvRanged));
   }
   for (const m of g.missiles || []) { const b = R.missiles.get(); b.position.set(wx(m.x), 0.8, wz(m.y)); }
   R.missiles.end();
@@ -2202,7 +2209,7 @@ function drawLabels3D(g) {
   const Bs = g.boss;
   if (Bs && Bs.hp > 0 && !(g.cutT > 0)) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9);    txt(bossText(Bs), px, py, 24 * k, '#ffd0a0'); }
   
-  if (!g.over || g.N > 0) { const [px, py] = P3(g.lx, CONFIG.LEADER_Y + g.cDepth + (g.lvRanged ? 34 : 18), 0.05); txt(String(g.N), px, py, 20, '#fff'); }
+  if (!g.over || g.N > 0) { const [px, py] = P3(g.lx, CONFIG.LEADER_Y + g.cDepth + (g.lvRanged ? CONFIG.SPECIAL_GAP + 24 : 18), 0.05); txt(String(g.N), px, py, 20, '#fff'); }
 }
 
 let last = performance.now();

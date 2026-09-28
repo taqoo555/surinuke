@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v75';
+const VERSION = 'v76';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -924,7 +924,7 @@ function update(g, dt) {
     if (!g.halt && B.y >= stop) { g.halt = true; g.cutT = C.CUT_T; if (!SIM) { sfx('siren'); shake(6); } }
     if (g.cutT > 0) g.cutT -= dt;
     const kind = bossKindOf(g.level), big = kind === 'majin' || kind === 'dragon';
-    if (big) B.x = 180 + Math.sin(B.t * 0.7) * (C.ROAD_R - C.ROAD_L - 2 * B.r) * 0.45;
+    if (kind !== 'truck') B.x = 180 + Math.sin(B.t * (big ? 0.7 : 0.9)) * (C.ROAD_R - C.ROAD_L - 2 * B.r) * (big ? 0.45 : 0.35);   
     B.x = clamp(B.x, C.ROAD_L + B.r, C.ROAD_R - B.r);
     if (B.y >= stop && !(g.cutT > 0)) {
       B.et = (B.et == null ? 0.8 : B.et) - dt * (B.t > C.BOSS_RAGE ? 2 : 1);   
@@ -1877,13 +1877,14 @@ function init3D() {
       const f = new T.Mesh(new T.ConeGeometry(0.45 * fs, 1.4 * fs, 8), B(col)); f.position.set(fx, fy, fz); boss.add(f); bossFlames.push({ f, ph: fx * 3 + fy });
     }
     
-    const addLot = (gr, col) => {
-      const lot = new T.Mesh(new T.BoxGeometry(12, 0.08, 44), M(col)); lot.position.set(0, 0.04, -20.8); lot.receiveShadow = true; gr.add(lot);   
-      const walk = new T.Mesh(new T.BoxGeometry(12, 0.1, 0.9), M(0xd4d2c8)); walk.position.set(0, 0.05, 1.65); walk.receiveShadow = true; gr.add(walk);
-      const curb = new T.Mesh(new T.BoxGeometry(12, 0.16, 0.12), M(0xf2f0e8)); curb.position.set(0, 0.08, 2.15); gr.add(curb);
-    };
-    addLot(boss, 0x7ccf63);
-    for (const fx of [-1.9, 1.9]) { const f = new T.Mesh(new T.BoxGeometry(0.06, 0.35, 0.06), M(0xf4f1ea)); f.position.set(fx, 0.18, 1.25); boss.add(f); }   
+    const addEyes = (gr, y, z, gap, sz) => { for (const sx of [-1, 1]) {
+      const w = new T.Mesh(new T.SphereGeometry(0.2 * sz, 10, 8), B(0xfff3a0)); w.position.set(sx * gap, y, z); gr.add(w);
+      const pu = new T.Mesh(new T.SphereGeometry(0.09 * sz, 8, 6), B(0x3a1206)); pu.position.set(sx * gap, y, z + 0.14 * sz); gr.add(pu);
+      const br = new T.Mesh(new T.BoxGeometry(0.42 * sz, 0.08 * sz, 0.06), B(0x3a1206)); br.position.set(sx * gap, y + 0.26 * sz, z + 0.05); br.rotation.z = sx * 0.45; gr.add(br); } };
+    const wrapFlames = [];
+    for (const [fx, fy, fz, fs, col] of [[-1.35, 0.9, 0.2, 0.8, 0xff6a1a], [1.35, 1.0, -0.1, 0.8, 0xff3b1a], [-1.3, 0.4, -0.6, 0.6, 0xffc21a], [1.3, 0.5, 0.6, 0.6, 0xff7a1a], [0, 0.3, 1.1, 0.5, 0xff7a1a]]) {
+      const f = new T.Mesh(new T.ConeGeometry(0.45 * fs, 1.4 * fs, 8), B(col)); f.position.set(fx, fy, fz); boss.add(f); bossFlames.push({ f, ph: fx * 3 + fy + fz }); wrapFlames.push(f); }
+    addEyes(boss, 0.95, 0.95, 0.65, 1.3);
     boss.visible = false; scene3.add(boss);
     
     boss.userData = { flash: bossBody.material, base: 0xe8c9a0, flames: bossFlames };
@@ -1945,8 +1946,10 @@ function init3D() {
     const twRoof = new T.Mesh(new T.BoxGeometry(2.4, 0.25, 2.0), M(0x8c95a8)); twRoof.position.y = 4.5; tower.add(twRoof);
     for (const [wx6, wy6] of [[-0.6, 3.6], [0.1, 3.0], [0.6, 3.8], [-0.4, 2.4]]) { const glow = new T.Mesh(new T.BoxGeometry(0.45, 0.4, 0.05), B(0xffa030)); glow.position.set(wx6, wy6, 0.92); tower.add(glow); }
     const towerFlames = mkFlames(tower, [[0, 5.2, 0, 1.3, 0xff6a1a], [-0.7, 4.9, 0.2, 0.9, 0xff3b1a], [0.7, 4.9, -0.1, 1.0, 0xff7a1a], [-0.6, 4.0, 1.0, 0.5, 0xffc21a], [0.6, 4.2, 1.0, 0.5, 0xffc21a], [0.1, 3.4, 1.0, 0.45, 0xff7a1a]]);
+    for (const [fx, fy, fz, fs, col] of [[-1.25, 1.2, 0.3, 0.9, 0xff6a1a], [1.25, 1.6, -0.2, 0.9, 0xff3b1a], [-1.2, 2.8, -0.4, 0.7, 0xffc21a], [1.2, 3.0, 0.5, 0.7, 0xff7a1a], [0, 0.5, 1.0, 0.6, 0xff7a1a]]) {
+      const f = new T.Mesh(new T.ConeGeometry(0.45 * fs, 1.4 * fs, 8), B(col)); f.position.set(fx, fy, fz); tower.add(f); towerFlames.push({ f, ph: fx * 3 + fy + fz }); }   
+    addEyes(tower, 2.6, 0.95, 0.5, 1.4);
     tower.userData = { flash: twMat, base: 0xc9d7e8, flames: towerFlames };
-    addLot(tower, 0xcfc8bc);   
     for (const o of [truck, majin, dragon, tower]) { o.traverse(m => { if (m.isMesh) m.castShadow = true; }); o.visible = false; scene3.add(o); }
     const bosses = { house: boss, truck, majin, dragon, tower };
     
@@ -2217,13 +2220,17 @@ function render3D(g, sx, sy) {
   
   const Bs = g.boss || (AH.boss && { x: 180, y: AH.boss.y, r: 46, hp: 1, flash: 0 });   
   
-  const bk = bossKindOf(g.level), dead = !!(Bs && Bs.hp <= 0 && g.boss), keep = dead && (bk === 'house' || bk === 'tower' || bk === 'truck');
+  
+  if (Bs && Bs.hp <= 0 && g.boss && Bs.deadT == null) Bs.deadT = g.t;
+  const bk = bossKindOf(g.level), dead = !!(Bs && Bs.hp <= 0 && g.boss), sinkK = dead && (bk === 'house' || bk === 'tower') ? clamp((g.t - Bs.deadT) / 1.2, 0, 1) : 0;
+  const keep = dead && (bk === 'truck' || ((bk === 'house' || bk === 'tower') && sinkK < 1));
   const show = !!(Bs && Bs.hp > 0) || keep;   
   for (const k in R.bosses) R.bosses[k].visible = show && k === bk;
   if (show && dead) {
     const r = Bs.r / U3, bo = R.bosses[bk], u = bo.userData;
-    bo.position.set(wx(Bs.x), 0, wz(Bs.y)); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0;
+    bo.position.set(wx(Bs.x), -sinkK * 5.5 * r, wz(Bs.y)); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0; bo.rotation.z = 0;
     u.flash.color.setHex(0x5a5550);
+    if (sinkK > 0 && sinkK < 1 && !paused && Math.random() < 0.6) fxSmoke(Bs.x + rr2(-40, 40), Bs.y, 2);
     for (const bf of u.flames) bf.f.scale.set(0.001, 0.001, 0.001);
     if (!paused && Math.random() < 0.3) fxSteam(Bs.x + rr2(-30, 30), Bs.y - 10, 1);
   } else if (show) {
@@ -2235,6 +2242,7 @@ function render3D(g, sx, sy) {
     if (u.arms) for (const a of u.arms) a.arm.rotation.z = a.sx * (0.25 + 0.2 * Math.sin(g.t * 3 + a.sx));   
     if (u.wings) for (const w of u.wings) w.w.rotation.z = w.sx * 0.25 * Math.sin(g.t * 4);   
     if (bk === 'majin') bo.position.y = 0.15 * Math.abs(Math.sin(g.t * 3));
+    if (bk === 'house' || bk === 'tower') { bo.position.y = 0.25 * r * Math.abs(Math.sin(g.t * 4)); bo.rotation.z = 0.07 * Math.sin(g.t * 4); }   
   }
   
   const now3 = performance.now(), fdt = clamp((now3 - (R.fxT || now3)) / 1000, 0, 0.05); R.fxT = now3;

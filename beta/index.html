@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v68';
+const VERSION = 'v69';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1526,8 +1526,10 @@ function drawIcon(kind, cx, cy, sz) {
       ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(bx - r * 0.25, by - r * 0.3, r * 0.2, 0, 6.28); ctx.fill();
       ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.moveTo(bx, by + r * 0.7); ctx.lineTo(bx - r * 0.2, by + r * 1.1); ctx.lineTo(bx + r * 0.2, by + r * 1.1); ctx.fill();
     } else {   
-      const tx = x + r * 1.6, ty = y + r * 0.5; ctx.strokeStyle = tierCss(Math.max(1, iconLv)); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(tx, ty, r * 0.7, 0, 6.28); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(tx - r, ty); ctx.lineTo(tx + r, ty); ctx.moveTo(tx, ty - r); ctx.lineTo(tx, ty + r); ctx.stroke();
+      
+      const tx = x + r * 1.6, ty = y + r * 0.5; ctx.fillStyle = tierCss(Math.max(1, iconLv)); ctx.beginPath(); ctx.arc(tx, ty, r * 0.8, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx - r * 1.05, ty); ctx.lineTo(tx + r * 1.05, ty); ctx.moveTo(tx, ty - r * 1.05); ctx.lineTo(tx, ty + r * 1.05); ctx.stroke();
     }
   } else if (kind === 'income') {   
     for (let k = 0; k < 3; k++) { const y = cy + sz * 0.32 - k * sz * 0.13;
@@ -1540,13 +1542,14 @@ function drawShop() {
   SHOP.forEach((s, i) => {
     const r = shopBtn(i), lv = meta[s.key], cost = shopCost(s, meta), can = meta.coins >= cost;
     ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
-    ctx.strokeStyle = can ? s.col : '#3a4260'; ctx.lineWidth = 2.5; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
+    
+    ctx.strokeStyle = can ? '#ffd84a' : '#3a4260'; ctx.lineWidth = can ? 3 : 2; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
     const cx = r.x + r.w / 2;
-    txt(s.name, cx, r.y + 12, 10, s.col, 'center', '800');   
+    txt(s.name, cx, r.y + 12, 10, '#ffffff', 'center', '800');   
     iconLv = lv; drawIcon(s.icon, cx, r.y + 36, 30);
     txt(s.eff(lv), cx, r.y + 58, 14, '#fff');
     
-    if (lv > 0) { ctx.fillStyle = '#0b0e18'; ctx.beginPath(); ctx.arc(r.x + r.w - 6, r.y + 6, 10, 0, 6.28); ctx.fill(); txt(String(lv), r.x + r.w - 6, r.y + 7, 11, '#fff'); }
+    
     const py = r.y + r.h - 24;
     ctx.fillStyle = can ? '#10142a' : 'rgba(40,46,70,0.9)'; rrect(r.x + 8, py, r.w - 16, 20, 10); ctx.fill();
     if (can) { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 1.5; rrect(r.x + 8, py, r.w - 16, 20, 10); ctx.stroke(); }

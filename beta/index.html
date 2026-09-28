@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v67';
+const VERSION = 'v68';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -87,6 +87,8 @@ const CONFIG = {
   STAGE1_HP: 0.25, STAGE1_BOSS: 0.1,   
                  
   BIG_BOSS: 1.4,                  
+  HEAD_START: 300,                
+  OPEN1: [3, 4, 0.35],            
   INTRO_T: 1.0,                   
   RAMP0: [0.4, 0.5, 0.7, 0.9],   
   EARLY_GAP: 0.6,                 
@@ -530,6 +532,12 @@ function buildTrack(g) {
     
     const fr = freeRow(g, c);
     
+    
+    if (g.level === 1 && c === 0) {
+      T.push({ dist: d = 60, kind: 'row', free: fr });
+      T.push({ dist: d += 230, kind: 'squad', lanes: [0, 1, 2], rows: C.OPEN1[0], cols: C.OPEN1[1], hpMul: C.OPEN1[2], brute: true });   
+      continue;
+    }
     const tut = g.level === 1 && c < 3, strong = false;   
     const sl = fr.guard != null ? (fr.guard + ri(1, 2)) % 3 : fr.blueX != null && c >= 1 ? laneOf(fr.blueX) : ri(0, 2);
     
@@ -644,13 +652,15 @@ function spreadFlame(g, e, dt) {
   if (!SIM && R3.on) fxSparks(e.x, e.y, 3);
 }
 function trackFlow(g, dt, scroll) {
-  if (!g.track) { g.track = buildTrack(g); g.trackEnd = g.track[g.track.length - 1].dist; }
+  if (!g.track) { g.track = buildTrack(g); g.trackEnd = g.track[g.track.length - 1].dist; g.dist = CONFIG.HEAD_START; }   
   if (!g.boss) g.dist += scroll * dt;
   while (g.ti < g.track.length && g.dist >= g.track[g.ti].dist) {
     const sp = g.track[g.ti++];
-    if (sp.kind === 'row') { const row = { y: -40, lanes: sp.lanes || [], free: sp.free, done: false, guard: sp.guard }; row.segs = rowSegs(row, g.t); g.rows.push(row); }
-    else if (sp.kind === 'wall') g.walls.push({ y: -40, len: sp.len, lane: null });
-    else if (sp.kind === 'squad') sp.lanes.forEach((l, k) => spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === (sp.lanes.length === 1 ? 0 : 1), sp.soft, k === 0 && sp.mix));   
+    const over = Math.max(0, g.dist - sp.dist);   
+    if (sp.kind === 'row') { const row = { y: -40 + over, lanes: sp.lanes || [], free: sp.free, done: false, guard: sp.guard }; row.segs = rowSegs(row, g.t); g.rows.push(row); }
+    else if (sp.kind === 'wall') g.walls.push({ y: -40 + over, len: sp.len, lane: null });
+    else if (sp.kind === 'squad') { const n0 = g.enemies.length; sp.lanes.forEach((l, k) => spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === (sp.lanes.length === 1 ? 0 : 1), sp.soft, k === 0 && sp.mix));
+      for (let i = n0; i < g.enemies.length; i++) { const e = g.enemies[i]; e.y += over; if (sp.hpMul) { e.hp *= sp.hpMul; e.max *= sp.hpMul; } } }   
     else if (sp.kind === 'boss') spawnBoss(g);   
   }
 }

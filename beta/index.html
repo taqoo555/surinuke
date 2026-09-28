@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v74';
+const VERSION = 'v75';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -56,7 +56,7 @@ const CONFIG = {
   DIV_GATES: false,               
   RED_GROW: 0.10,                    
   ROW_MAX: 9,                     
-  ROW_EVERY: 1,                      
+  ROW_EVERY: 2,                         
 
   
   LEVEL_GROW: 1.22,                  
@@ -82,7 +82,7 @@ const CONFIG = {
   WEAPON_TIRES: false,
   WEAPON_HP: 200, WEAPON_FIRST: 0.5,                
 
-  STAGE_DIFF: [1.5, 1.4, 0.9, 1.7, 1, 0.8],   
+  STAGE_DIFF: [1.5, 1.4, 0.9, 1.0, 1, 0.8],      
   EASE: [1, 0.35, 0.65, 0.9],      
   STAGE1_HP: 0.25, STAGE1_BOSS: 0.1,   
                  
@@ -123,7 +123,7 @@ const CONFIG = {
   WIDE_RED: 0.7,                  
   WALL_RATE: 0.22,                
   LANE_RATE: 0.4,                 
-  MON_BLUE: 1.0, MON_ROWS: 2,     
+  MON_BLUE: 1.0, MON_ROWS: 0,        
 
   
   UP_RATE: 0.10, UP_DMG: 0.10, UP_INCOME: 0.15,   
@@ -511,7 +511,8 @@ function buildTrack(g) {
     if (theme === 'lane') {
       
       const mon = [0, 1, 2].filter(i => i !== up);
-      T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 5, brute: g.level >= 3 && k === 1, mix: mixOf(g) });
+      
+      T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: mon, rows: rows + C.MON_ROWS, cols: 4, brute: g.level >= 3 && k === 1, mix: mixOf(g) });
       
       
       const upBlue = k % 3 === 0 && rng() < C.LANE_BLUE;   
@@ -555,7 +556,7 @@ function buildTrack(g) {
       
       const open = ri(0, 2), wl = (open + ri(1, 2)) % 3;
       T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : i === wl ? slotWeaponTire(g) : slotTire(g)) });
-      T.push({ dist: d + 40, kind: 'squad', lanes: [open], rows: rows + 1, cols: 5 });
+      T.push({ dist: d + G * 0.6, kind: 'squad', lanes: [open], rows: rows + 1, cols: 5 });   
       continue;
     }
     
@@ -574,7 +575,8 @@ function buildTrack(g) {
     
     if (fr.guard != null) T.push({ dist: d + G - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP * (c < 2 ? C.GUARD_EARLY : 1)) : { type: 'empty' }) });
     T.push({ dist: d += G, kind: 'row', free: fr });
-    if (c >= 1 && rng() < C.FILLER) T.push({ dist: d + G * 0.45, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });   
+    
+    if (c >= 1 && rng() < C.FILLER) T.splice(T.length - 1, 0, { dist: d - G * 0.6, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });
   }
   g.ramp = 1; g.chunk = chunks;
   

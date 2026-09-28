@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v76';
+const VERSION = 'v77';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -62,6 +62,7 @@ const CONFIG = {
   LEVEL_GROW: 1.22,                  
   GRUNT_HP: 3.5, BRUTE_HP: 45,      
   HYD_HP: 4, HYD_RATE: 0.5,       
+  TANK_RATE: 0.5, TANK_HP: 6, TANK_FLOOD: 520,   
   HYD_JET: 1.4,                   
   HYD_WAVE: 380, HYD_BAND: 110,   
   BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
@@ -391,7 +392,8 @@ function mixOf(g) {
   if (g.level < 2) return null;
   const m = MIX[(g.level - 1) % MIX.length], k = g.level > 6 ? 1.2 : 1;
   return { ball: rng() < m.ball * k ? 2 : 0, spread: rng() < m.spread * k ? 1 : 0, lava: rng() < m.lava * k ? 1 : 0,
-           hydrant: stageOf(g.level).scene === 'home' && rng() < CONFIG.HYD_RATE ? 1 : 0 };
+           hydrant: stageOf(g.level).scene === 'home' && rng() < CONFIG.HYD_RATE ? 1 : 0,
+           tank: stageOf(g.level).scene === 'office' && rng() < CONFIG.TANK_RATE ? 1 : 0 };   
 }
 
 function freeRow(g, c) {
@@ -599,6 +601,8 @@ function spawnSquad(g, lane, rows, cols, brute, soft, mix) {
       hk: rr(0.6, 1.2), wob: rr(0.5, 2.5), wf: rr(1.2, 3), ph: rr(0, 6.28) });
   if (brute) g.enemies.push({ kind: 'brute', lane, x: laneX(lane), y: -44 - rows * 19, r: 19, hp: C.BRUTE_HP * em, max: C.BRUTE_HP * em, vy: C.ENEMY_VY, bite: 6, hk: 0.5 });
   
+  
+  if (mix && mix.tank && rows * cols >= 6) g.enemies.push({ kind: 'tank', lane, x: laneX(lane), y: 40, r: 16, hp: C.TANK_HP * em, max: C.TANK_HP * em, vy: 0, bite: 0, hk: 0, fixed: true });
   if (mix && mix.hydrant && rows * cols >= 6) { const side = lane === 2 ? 1 : 0;   
     g.enemies.push({ kind: 'hydrant', lane: side ? 2 : 0, x: side ? C.ROAD_R - 12 : C.ROAD_L + 12, y: 40, r: 10, hp: C.HYD_HP * em, max: C.HYD_HP * em, vy: 0, bite: 0, hk: 0, fixed: true }); }
   if (mix && mix.ball) for (let k = 0; k < mix.ball; k++)
@@ -627,7 +631,7 @@ function updateSpecials(g, dt) {
   if (g.lvRanged) {
     g.rangedT -= dt;
     const pickT = () => { let best = null, bd = 1e9; const p = specPos(g, 'ranged');
-      for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.y > -10 && e.y < C.LEADER_Y) {    const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
+      for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && e.y < C.LEADER_Y) {    const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
       if (!best && g.boss && g.boss.hp > 0 && g.boss.y > 0) best = g.boss; return best; };
     if (g.rangedT <= 0) { const t = pickT(); if (t) { const p = specPos(g, 'ranged'); g.missiles.push({ x: p.x, y: p.y - 6, vx: 0, vy: -C.RANGED_SPEED, t, life: 0 }); g.rangedT = rangedEvery(g.lvRanged); if (!SIM && rng2() < 0.5) sfx('shot'); } else g.rangedT = 0.1; }
     for (const m of g.missiles) {
@@ -672,6 +676,22 @@ function updateWaves(g, dt) {
     }
   }
   g.waves = g.waves.filter(w => w.r < C.ROAD_R - C.ROAD_L + 20 || w.jet > 0);
+}
+
+function tankBurst(g, e) {
+  (g.floods = g.floods || []).push({ lane: e.lane, x: laneX(e.lane), y: -60, fall: 0.5, tx: e.x, ty: e.y });
+  if (!SIM) { if (R3.on) { fxSplash(e.x, e.y, 40); fxSteam(e.x, e.y, 8); } else burst(e.x, e.y, '#6fc3ff', 40); sfx('spray'); shake(8); }
+}
+function updateFloods(g, dt) {
+  if (!g.floods || !g.floods.length) return;
+  const C = CONFIG;
+  for (const f of g.floods) {
+    if (f.fall > 0) { f.fall -= dt; if (!SIM && R3.on) for (let i = 0; i < 6; i++) fxAdd({ x: f.tx + rr2(-14, 14), y: f.ty + rr2(-6, 6), h: rr2(4, 6), vx: rr2(-20, 20), vy: rr2(-10, 10), vh: rr2(-6, -2), g: 9, life: 0, max: rr2(0.4, 0.7), s0: 0.5, s1: 0.3, col: 0xcdefff, add: true }); continue; }   
+    const y0 = f.y; f.y += C.TANK_FLOOD * dt;
+    for (const o of g.enemies) if (o.hp > 0 && o.kind !== 'hydrant' && o.kind !== 'tank' && Math.abs(o.x - f.x) < LANE_W / 2 + 4 && o.y >= y0 - 20 && o.y <= f.y) { kill(g, o); if (!SIM && R3.on) fxSmoke(o.x, o.y, 2); }
+    if (!SIM) for (let i = 0; i < 4; i++) { const x = f.x + rr2(-LANE_W / 2, LANE_W / 2); if (R3.on) fxAdd({ x, y: f.y + rr2(-8, 8), h: 0.3, vx: rr2(-30, 30), vy: rr2(40, 140), vh: rr2(2, 5), g: 10, life: 0, max: rr2(0.4, 0.7), s0: 0.45, s1: 0.2, col: 0x9fdcff, add: true }); else burst(x, f.y, '#6fc3ff', 1); }
+  }
+  g.floods = g.floods.filter(f => f.fall > 0 || f.y < C.LEADER_Y - 30);
 }
 
 function spreadFlame(g, e, dt) {
@@ -910,6 +930,7 @@ function update(g, dt) {
     }
   }
   updateWaves(g, dt);   
+  updateFloods(g, dt);   
   updateSpecials(g, dt);   
   g.enemies = g.enemies.filter(e => e.hp > 0 && e.y < C.H + 40);
 
@@ -926,8 +947,11 @@ function update(g, dt) {
     const kind = bossKindOf(g.level), big = kind === 'majin' || kind === 'dragon';
     if (kind !== 'truck') B.x = 180 + Math.sin(B.t * (big ? 0.7 : 0.9)) * (C.ROAD_R - C.ROAD_L - 2 * B.r) * (big ? 0.45 : 0.35);   
     B.x = clamp(B.x, C.ROAD_L + B.r, C.ROAD_R - B.r);
+    if (B.punch > 0) B.punch -= dt;
+    
+    if (!B.rage && B.hp < B.max * 0.5) { B.rage = true; if (!SIM) { sfx('siren'); shake(6); } }
     if (B.y >= stop && !(g.cutT > 0)) {
-      B.et = (B.et == null ? 0.8 : B.et) - dt * (B.t > C.BOSS_RAGE ? 2 : 1);   
+      B.et = (B.et == null ? 0.8 : B.et) - dt * (B.t > C.BOSS_RAGE ? 2 : 1) * (B.rage ? 1.6 : 1);   
       if (B.et <= 0) {
         B.et = Math.max(C.EMBER_MIN, C.EMBER_EVERY - 0.04 * g.level);
         for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ x0: B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: 0, T: C.EMBER_T });
@@ -952,7 +976,9 @@ function update(g, dt) {
   if (B && B.hp <= 0 && !g.over) {
     g.over = 'clear'; g.embers = [];
     addCoins(g, 40 + 12 * g.level, B.x, B.y);
-    if (!SIM) { bigBoom(B.x, B.y); sfx('clear'); }
+    if (!SIM) { bigBoom(B.x, B.y); sfx('clear');
+      if (R3.on) { fxSteam(B.x, B.y, 30); fxSparks(B.x, B.y, 50); for (let k = 0; k < 12; k++) fxAdd({ x: B.x + rr2(-20, 20), y: B.y + rr2(-10, 10), h: rr2(1, 3), vx: rr2(-160, 160), vy: rr2(-120, 120), vh: rr2(4, 9), g: 10, life: 0, max: rr2(0.8, 1.3), s0: rr2(0.6, 0.9), s1: 0.1, col: [0xfff36b, 0xffffff, 0xffb0d0, 0x9fdcff][k % 4], add: true }); }   
+      for (let k = 0; k < 8; k++) coinFx(B.x + rr2(-60, 60), B.y + rr2(-30, 30), 1 + Math.floor(g.level / 2)); }
   }
   if (g.t > 400 && !g.over) g.over = 'fail';   
 }
@@ -961,7 +987,7 @@ function hurt(g, e, d) {
   if (e.hp <= 0) return;
   if (e === g.boss) {
     if (e.y < 0) return;   
-    e.hp -= d; e.flash = 0.06;
+    e.hp -= d; e.flash = 0.06; e.punch = 0.12;   
     
     if (!SIM && Math.random() < 0.3) popText(e.x + rr2(-30, 30), e.y + rr2(-14, 10), Math.round(d * CONFIG.TIRE_SHOW), '#ffd84a', 13 + Math.min(8, Math.log10(Math.max(1, d * CONFIG.TIRE_SHOW)) * 3));
     return;
@@ -975,6 +1001,7 @@ function kill(g, e, contact) {
   e.dead = true; e.hp = 0;
   if (!contact) { g.kills++; addCoins(g, ({ brute: 6, spread: 3, ball: 2, lava: 4, hydrant: 2 }[e.kind] || 1) * (1 + Math.floor(g.level / 2)), e.x, e.y); }
   if (e.kind === 'hydrant') hydrantBurst(g, e);
+  if (e.kind === 'tank') tankBurst(g, e);
   if (!SIM && R3.on) { fxSteam(e.x, e.y, e.kind === 'brute' ? 8 : 4); fxSparks(e.x, e.y, e.kind === 'brute' ? 12 : 5); sfx('kill'); if (e.kind === 'brute') shake(4); }   
   else if (!SIM) { burst(e.x, e.y, '#ffffff', e.kind === 'brute' ? 14 : 5); burst(e.x, e.y, e.kind === 'brute' ? '#ff7a1a' : '#ffb347', e.kind === 'brute' ? 16 : 5);   
    sfx('kill'); if (e.kind === 'brute') shake(4); }
@@ -1373,7 +1400,7 @@ function drawGateSide(x0, x1, y, s, taken, dt) {
 function drawEnemies(g) {
   for (const e of g.enemies) {
     const br = e.kind === 'brute';
-    ctx.fillStyle = e.kind === 'hydrant' ? '#d8262a' : e.purple ? '#a04dff' : e.kind === 'ball' ? '#ffd21a' : e.kind === 'lava' ? '#' + lavaCol(e).toString(16).padStart(6, '0') : br ? '#ff8a3a' : '#ff4d5e';
+    ctx.fillStyle = e.kind === 'tank' ? '#6f8fb0' : e.kind === 'hydrant' ? '#d8262a' : e.purple ? '#a04dff' : e.kind === 'ball' ? '#ffd21a' : e.kind === 'lava' ? '#' + lavaCol(e).toString(16).padStart(6, '0') : br ? '#ff8a3a' : '#ff4d5e';
     ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 6.28); ctx.fill();
     ctx.fillStyle = br ? '#ffc08a' : '#ff9aa4';   
     ctx.beginPath(); ctx.moveTo(e.x - e.r * 0.8, e.y - e.r * 0.4); ctx.lineTo(e.x - e.r * 0.6, e.y - e.r * 1.3); ctx.lineTo(e.x - e.r * 0.2, e.y - e.r * 0.8); ctx.fill();
@@ -1818,6 +1845,17 @@ function init3D() {
     });
     const walls = pool(() => new T.Mesh(box, M(0x0d0f16)));
     
+    
+    const tanks = pool(() => {
+      const gr = new T.Group(), body = M(0x6f8fb0);
+      for (const [lx, lz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) { const leg = new T.Mesh(new T.BoxGeometry(0.12, 2.2, 0.12), M(0x8a6a4a)); leg.position.set(lx, 1.1, lz); gr.add(leg); }
+      const tb = new T.Mesh(new T.CylinderGeometry(1.0, 1.0, 1.2, 16), body); tb.position.y = 2.8; gr.add(tb);
+      for (const by of [2.4, 3.2]) { const band = new T.Mesh(new T.CylinderGeometry(1.03, 1.03, 0.08, 16), M(0x3f5670)); band.position.y = by; gr.add(band); }
+      const roof = new T.Mesh(new T.ConeGeometry(1.1, 0.6, 16), M(0x3f5670)); roof.position.y = 3.7; gr.add(roof);
+      const drop = new T.Mesh(new T.SphereGeometry(0.25, 10, 8), M(0x6fc3ff)); drop.position.set(0, 2.8, 1.0); drop.scale.set(1, 1.3, 0.4); gr.add(drop);   
+      gr.traverse(o => { if (o.isMesh) o.castShadow = true; }); gr.userData = { body };
+      return gr;
+    });
     const hydrants = pool(() => {
       const gr = new T.Group(), red = M(0xd8262a);
       const base = new T.Mesh(new T.CylinderGeometry(0.42, 0.48, 0.18, 12), M(0x9a1c1f)); base.position.y = 0.09; gr.add(base);
@@ -1969,7 +2007,9 @@ function init3D() {
       ranged: mkSpec(0x3fd46a, gr => { const c = new T.Mesh(new T.CylinderGeometry(0.08, 0.1, 0.7, 8), cannonMat); c.rotation.x = Math.PI / 2 - 0.5; c.position.set(0.18, 0.78, -0.12); gr.add(c); }),
     };
     const missiles = pool(() => new T.Mesh(new T.SphereGeometry(0.2, 10, 8), B(0x7fe8ff)));
-    Object.assign(R3, { bosses, hydrants, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat });
+    const bossAura = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xffb870, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }));
+    bossAura.renderOrder = 4; bossAura.visible = false; scene3.add(bossAura);   
+    Object.assign(R3, { bossAura, col2: new T.Color(), bosses, hydrants, tanks, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat });
     Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody, bossFlames,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
@@ -2181,6 +2221,7 @@ function render3D(g, sx, sy) {
     n++;
   };
   for (const e of g.enemies) {
+    if (e.kind === 'tank') { const tk = R.tanks.get(), k = 1.1; tk.position.set(wx(e.x), 0, wz(e.y)); tk.scale.set(k, k, k); tk.userData.body.color.setHex(e.flash > 0 ? 0xffffff : 0x6f8fb0); continue; }
     if (e.kind === 'hydrant') { const hy = R.hydrants.get(), k = e.r / U3 * 2.8; hy.position.set(wx(e.x), 0, wz(e.y)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(e.flash > 0 ? 0xffffff : 0xd8262a); continue; }
     flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'lava' ? lavaCol(e) : e.purple && e.kind === 'grunt' ? ECOL3.purple : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37);
   }
@@ -2192,10 +2233,11 @@ function render3D(g, sx, sy) {
       if (sp.mix.spread) flame(laneX(lane), -44 - sp.rows * 19 - ahead, 13 / U3 * 1.1, ECOL3.spread, 1);
       if (sp.mix.lava) flame(laneX(lane), -50 - sp.rows * 19 - ahead - (sp.mix.spread ? 30 : 0), 15 / U3 * 1.1, 0xff4a10, 2);
       for (let k = 0; k < sp.mix.ball; k++) flame(laneX(lane) + (k ? 20 : -20), -10 + k * 30 - ahead, 8 / U3 * 1.1, ECOL3.ball, k);
+      if (sp.mix.tank && sp.rows * cols >= 6) { const tk = R.tanks.get(); tk.position.set(wx(laneX(lane)), 0, wz(40 - ahead)); tk.scale.set(1.1, 1.1, 1.1); tk.userData.body.color.setHex(0x6f8fb0); }
       if (sp.mix.hydrant && sp.rows * cols >= 6) { const side = lane === 0 ? 0 : lane === 2 ? 1 : 0, hy = R.hydrants.get(), k = 10 / U3 * 2.8; hy.position.set(wx(side ? CONFIG.ROAD_R - 12 : CONFIG.ROAD_L + 12), 0, wz(40 - ahead)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(0xd8262a); }
     }
   }
-  R.hydrants.end();
+  R.hydrants.end(); R.tanks.end();
   R.enemyBody.count = R.enemyHorn.count = R.glowIM.count = R.haloIM.count = n; R.enemyEye.count = h;
   R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = R.enemyEye.instanceMatrix.needsUpdate = R.glowIM.instanceMatrix.needsUpdate = R.haloIM.instanceMatrix.needsUpdate = true;
   if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
@@ -2226,6 +2268,7 @@ function render3D(g, sx, sy) {
   const keep = dead && (bk === 'truck' || ((bk === 'house' || bk === 'tower') && sinkK < 1));
   const show = !!(Bs && Bs.hp > 0) || keep;   
   for (const k in R.bosses) R.bosses[k].visible = show && k === bk;
+  R.bossAura.visible = false;
   if (show && dead) {
     const r = Bs.r / U3, bo = R.bosses[bk], u = bo.userData;
     bo.position.set(wx(Bs.x), -sinkK * 5.5 * r, wz(Bs.y)); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0; bo.rotation.z = 0;
@@ -2237,17 +2280,23 @@ function render3D(g, sx, sy) {
     for (const bf of R.bosses[bk].userData.flames) bf.f.scale.set(1, 1, 1);
     const r = Bs.r / U3, bo = R.bosses[bk], u = bo.userData;
     bo.position.set(wx(Bs.x), 0, wz(Bs.y)); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0;   
-    u.flash.color.setHex(Bs.flash > 0 ? 0xffffff : u.base);   
-    for (const bf of u.flames) { const k = 1 + 0.18 * Math.sin(g.t * 11 + bf.ph) + 0.08 * Math.sin(g.t * 23 + bf.ph); bf.f.scale.set(1, k, 1); }   
+    R.col.setHex(u.base); if (Bs.rage) R.col.lerp(R.col2.setHex(0xff6a5a), 0.45 + 0.15 * Math.sin(g.t * 10));   
+    u.flash.color.copy(Bs.flash > 0 ? R.col2.setHex(0xffffff) : R.col);   
+    const fk = Bs.rage ? 1.4 : 1;
+    for (const bf of u.flames) { const k = 1 + 0.18 * Math.sin(g.t * 11 + bf.ph) + 0.08 * Math.sin(g.t * 23 + bf.ph); bf.f.scale.set(fk, k * fk, fk); }   
+    const pk = Math.max(0, Bs.punch || 0) / 0.12; bo.scale.set(r * (1 + 0.07 * pk), r * (1 - 0.05 * pk), r * (1 + 0.07 * pk));   
+    const au = R.bossAura; au.visible = true; au.quaternion.copy(R.cam.quaternion); au.position.set(bo.position.x, r * 2.2, bo.position.z);
+    const as = r * (7 + 0.6 * Math.sin(g.t * 3)) * (Bs.rage ? 1.25 : 1); au.scale.set(as, as, 1); au.material.color.setHex(Bs.rage ? 0xff7050 : 0xffb870);   
     if (u.arms) for (const a of u.arms) a.arm.rotation.z = a.sx * (0.25 + 0.2 * Math.sin(g.t * 3 + a.sx));   
     if (u.wings) for (const w of u.wings) w.w.rotation.z = w.sx * 0.25 * Math.sin(g.t * 4);   
     if (bk === 'majin') bo.position.y = 0.15 * Math.abs(Math.sin(g.t * 3));
-    if (bk === 'house' || bk === 'tower') { bo.position.y = 0.25 * r * Math.abs(Math.sin(g.t * 4)); bo.rotation.z = 0.07 * Math.sin(g.t * 4); }   
+    if (bk === 'house' || bk === 'tower') { const ph = Math.abs(Math.sin(g.t * 4)); bo.position.y = 0.25 * r * ph; bo.rotation.z = 0.07 * Math.sin(g.t * 4);   
+      if (ph < 0.12 && !(R.landed) && !paused) { R.landed = true; fxSmoke(Bs.x - 30, Bs.y + 10, 2); fxSmoke(Bs.x + 30, Bs.y + 10, 2); shake(1.5); } else if (ph > 0.3) R.landed = false; }   
   }
   
   const now3 = performance.now(), fdt = clamp((now3 - (R.fxT || now3)) / 1000, 0, 0.05); R.fxT = now3;
   if (!paused) {
-    for (const e of g.enemies) if (e.kind !== 'hydrant' && Math.random() < fdt * (e.kind === 'lava' ? 2 * e.hp / e.max : 0.6)) fxSparks(e.x, e.y, 1);
+    for (const e of g.enemies) if (e.kind !== 'hydrant' && e.kind !== 'tank' && Math.random() < fdt * (e.kind === 'lava' ? 2 * e.hp / e.max : 0.6)) fxSparks(e.x, e.y, 1);
     for (const row of g.rows) for (const z of row.segs) if (z.s.type === 'tire' && z.s.hp > 0 && z.s.skin === 2 && Math.random() < fdt * 3) fxSmoke((z.x0 + z.x1) / 2, row.y, 1);
     if (g.boss && g.boss.hp > 0 && g.boss.y > -20) { if (Math.random() < fdt * 8) fxSparks(g.boss.x + rr2(-40, 40), g.boss.y, 2); if (Math.random() < fdt * 3) fxSmoke(g.boss.x, g.boss.y - 20, 1); }
     drawFx3(fdt);

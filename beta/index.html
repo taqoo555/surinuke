@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v72';
+const VERSION = 'v73';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -469,7 +469,8 @@ function buildStage1(g) {
     { dist: 1350, kind: 'row', free: { parts: [fix(15), fix(-12)], cuts: [cut(L1, 0, 0)] } },
     { dist: 1450, kind: 'squad', lanes: [1, 2], rows: 2, cols: 4, hpMul: 0.4 },
     { dist: 1600, kind: 'squad', lanes: [2], rows: 3, cols: 5, soft: true, brute: true },
-    { dist: 1800, kind: 'row', free: { parts: [fix(-15), fix(20)], cuts: [cut(L2, 0, 0)] } },
+    
+    { dist: 1800, kind: 'row', free: { parts: [fix(-15), { type: 'mul', v: 2, good: true, hitT: 0 }], cuts: [cut(L2, 0, 0)] } },
     { dist: 1900, kind: 'squad', lanes: [0, 1], rows: 2, cols: 4, hpMul: 0.6 },
     { dist: 2020, kind: 'squad', lanes: [0, 1, 2], rows: 3, cols: 4, hpMul: 0.6 },
     { dist: 2020 + C.TRACK_GAP * C.BOSS_AFTER, kind: 'boss' },

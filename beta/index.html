@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v70';
+const VERSION = 'v71';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -214,7 +214,7 @@ const rangedDmg = (g, lv) => CONFIG.RANGED_DMG * g.power * (1 + 0.3 * (lv - 1));
 
 
 function newRun(level, m, seed) {
-  rng = mulberry32(seed == null ? (Date.now() & 0xffffffff) : seed);
+  rng = mulberry32(seed == null ? (level === 1 ? 20260929 : Date.now() & 0xffffffff) : seed);   
   const C = CONFIG;
   const g = {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
@@ -450,7 +450,28 @@ function freeRow(g, c) {
   return { parts: [bl ? blue() : red(1.2), bl ? red(1.2) : blue(), obst()], cuts: [fixed(L1), fixed(L2)], blueX: bl ? mid(L, L1) : mid(L1, L2) };
   }
 }
+
+function buildStage1(g) {
+  const C = CONFIG, L1 = C.ROAD_L + LANE_W, L2 = C.ROAD_L + LANE_W * 2;
+  const fix = v => ({ type: 'add', v, good: v > 0, hitT: 0 });
+  const cut = (x, sg, w) => ({ x, sg, w, wa: 0, amp: 0, f: 1, ph: 0 });
+  g.wk = 0; g.ramp = 1; g.chunk = 0;
+  const T = [
+    { dist: 60, kind: 'row', free: { parts: [fix(-5), fix(25), fix(-5)], cuts: [cut(180, -1, 120), cut(180, 1, 120)] } },
+    { dist: 290, kind: 'squad', lanes: [0, 1, 2], rows: C.OPEN1[0], cols: C.OPEN1[1], hpMul: C.OPEN1[2], brute: true },
+    { dist: 600, kind: 'squad', lanes: [1], rows: 2, cols: 3, soft: true },
+    { dist: 850, kind: 'row', free: { parts: [fix(-C.TUTOR_RED[0])], cuts: [] } },
+    { dist: 1100, kind: 'squad', lanes: [0], rows: 2, cols: 3, soft: true },
+    { dist: 1350, kind: 'row', free: { parts: [fix(15), fix(-12)], cuts: [cut(L1, 0, 0)] } },
+    { dist: 1560, kind: 'squad', lanes: [2], rows: 2, cols: 4, soft: true },
+    { dist: 1800, kind: 'row', free: { parts: [fix(-15), fix(20)], cuts: [cut(L2, 0, 0)] } },
+    { dist: 2020, kind: 'squad', lanes: [0, 1, 2], rows: 2, cols: 4, hpMul: 0.6 },
+    { dist: 2020 + C.TRACK_GAP * C.BOSS_AFTER, kind: 'boss' },
+  ];
+  return T;
+}
 function buildTrack(g) {
+  if (g.level === 1) return buildStage1(g);
   const C = CONFIG, G = C.TRACK_GAP, T = [];
   let d = 0, theme = null, left = 0, up = 0, k = 0;
   const S = stageOf(g.level);

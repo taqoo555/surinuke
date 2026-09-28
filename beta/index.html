@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v73';
+const VERSION = 'v74';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1876,7 +1876,7 @@ function init3D() {
     }
     
     const addLot = (gr, col) => {
-      const lot = new T.Mesh(new T.BoxGeometry(12, 0.08, 16), M(col)); lot.position.set(0, 0.04, -6.8); lot.receiveShadow = true; gr.add(lot);
+      const lot = new T.Mesh(new T.BoxGeometry(12, 0.08, 44), M(col)); lot.position.set(0, 0.04, -20.8); lot.receiveShadow = true; gr.add(lot);   
       const walk = new T.Mesh(new T.BoxGeometry(12, 0.1, 0.9), M(0xd4d2c8)); walk.position.set(0, 0.05, 1.65); walk.receiveShadow = true; gr.add(walk);
       const curb = new T.Mesh(new T.BoxGeometry(12, 0.16, 0.12), M(0xf2f0e8)); curb.position.set(0, 0.08, 2.15); gr.add(curb);
     };
@@ -2214,9 +2214,18 @@ function render3D(g, sx, sy) {
   R.embers.end(); R.rings.end();
   
   const Bs = g.boss || (AH.boss && { x: 180, y: AH.boss.y, r: 46, hp: 1, flash: 0 });   
-  const bk = bossKindOf(g.level), show = !!(Bs && Bs.hp > 0);   
+  
+  const bk = bossKindOf(g.level), dead = !!(Bs && Bs.hp <= 0 && g.boss), keep = dead && (bk === 'house' || bk === 'tower' || bk === 'truck');
+  const show = !!(Bs && Bs.hp > 0) || keep;   
   for (const k in R.bosses) R.bosses[k].visible = show && k === bk;
-  if (show) {
+  if (show && dead) {
+    const r = Bs.r / U3, bo = R.bosses[bk], u = bo.userData;
+    bo.position.set(wx(Bs.x), 0, wz(Bs.y)); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0;
+    u.flash.color.setHex(0x5a5550);
+    for (const bf of u.flames) bf.f.scale.set(0.001, 0.001, 0.001);
+    if (!paused && Math.random() < 0.3) fxSteam(Bs.x + rr2(-30, 30), Bs.y - 10, 1);
+  } else if (show) {
+    for (const bf of R.bosses[bk].userData.flames) bf.f.scale.set(1, 1, 1);
     const r = Bs.r / U3, bo = R.bosses[bk], u = bo.userData;
     bo.position.set(wx(Bs.x), 0, wz(Bs.y)); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0;   
     u.flash.color.setHex(Bs.flash > 0 ? 0xffffff : u.base);   

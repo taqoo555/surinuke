@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v71';
+const VERSION = 'v72';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -86,6 +86,7 @@ const CONFIG = {
   EASE: [1, 0.35, 0.65, 0.9],      
   STAGE1_HP: 0.25, STAGE1_BOSS: 0.1,   
                  
+  BOSS_MIN_SEC: 6,                
   BIG_BOSS: 1.4,                  
   HEAD_START: 300,                
   OPEN1: [3, 4, 0.35],            
@@ -459,13 +460,18 @@ function buildStage1(g) {
   const T = [
     { dist: 60, kind: 'row', free: { parts: [fix(-5), fix(25), fix(-5)], cuts: [cut(180, -1, 120), cut(180, 1, 120)] } },
     { dist: 290, kind: 'squad', lanes: [0, 1, 2], rows: C.OPEN1[0], cols: C.OPEN1[1], hpMul: C.OPEN1[2], brute: true },
-    { dist: 600, kind: 'squad', lanes: [1], rows: 2, cols: 3, soft: true },
+    
+    { dist: 480, kind: 'squad', lanes: [0, 2], rows: 2, cols: 4, soft: true },
+    { dist: 620, kind: 'squad', lanes: [1], rows: 3, cols: 4, soft: true },
     { dist: 850, kind: 'row', free: { parts: [fix(-C.TUTOR_RED[0])], cuts: [] } },
-    { dist: 1100, kind: 'squad', lanes: [0], rows: 2, cols: 3, soft: true },
+    { dist: 960, kind: 'squad', lanes: [0, 1, 2], rows: 2, cols: 4, hpMul: 0.3 },   
+    { dist: 1130, kind: 'squad', lanes: [0], rows: 3, cols: 4, hpMul: 0.3 },
     { dist: 1350, kind: 'row', free: { parts: [fix(15), fix(-12)], cuts: [cut(L1, 0, 0)] } },
-    { dist: 1560, kind: 'squad', lanes: [2], rows: 2, cols: 4, soft: true },
+    { dist: 1450, kind: 'squad', lanes: [1, 2], rows: 2, cols: 4, hpMul: 0.4 },
+    { dist: 1600, kind: 'squad', lanes: [2], rows: 3, cols: 5, soft: true, brute: true },
     { dist: 1800, kind: 'row', free: { parts: [fix(-15), fix(20)], cuts: [cut(L2, 0, 0)] } },
-    { dist: 2020, kind: 'squad', lanes: [0, 1, 2], rows: 2, cols: 4, hpMul: 0.6 },
+    { dist: 1900, kind: 'squad', lanes: [0, 1], rows: 2, cols: 4, hpMul: 0.6 },
+    { dist: 2020, kind: 'squad', lanes: [0, 1, 2], rows: 3, cols: 4, hpMul: 0.6 },
     { dist: 2020 + C.TRACK_GAP * C.BOSS_AFTER, kind: 'boss' },
   ];
   return T;
@@ -694,7 +700,10 @@ function bossKindOf(level) {
 }
 function spawnBoss(g) {
   
-  const hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? CONFIG.STAGE1_BOSS : easeOf(g.level)) * (g.level % 6 === 0 ? CONFIG.BIG_BOSS : 1);   
+  let hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? CONFIG.STAGE1_BOSS : easeOf(g.level)) * (g.level % 6 === 0 ? CONFIG.BIG_BOSS : 1);   
+  
+  const W = weapon(g), dps = g.N * g.power * g.rateMul * W.rate * W.dmg + (g.lvRanged ? rangedDmg(g, g.lvRanged) / rangedEvery(g.lvRanged) : 0);
+  hp = Math.max(hp, dps * CONFIG.BOSS_MIN_SEC);
   g.boss = { x: 180, y: -60, r: 46, hp, max: hp, t: 0, flash: 0 };
   if (!SIM) { sfx('boss'); shake(6); }
 }

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v79';
+const VERSION = 'v80';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -62,7 +62,7 @@ const CONFIG = {
   LEVEL_GROW: 1.22,                  
   GRUNT_HP: 3.5, BRUTE_HP: 45,      
   HYD_HP: 4, HYD_RATE: 0.5,       
-  TANK_RATE: 0.5, TANK_HP: 6, TANK_FLOOD: 520,   
+  TANK_RATE: 0.5, TANK_HP: 2, TANK_FLOOD: 520,   
   HYD_JET: 1.4,                   
   HYD_WAVE: 380, HYD_BAND: 110,   
   BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
@@ -676,7 +676,7 @@ function updateWaves(g, dt) {
 }
 
 function tankBurst(g, e) {
-  (g.floods = g.floods || []).push({ lane: e.lane, x: laneX(e.lane), y: -60, fall: 0.5, tx: e.x, ty: e.y });
+  (g.floods = g.floods || []).push({ lane: e.lane, x: laneX(e.lane), y: e.y, fall: 0.3, tx: e.x, ty: e.y });
   if (!SIM) { if (R3.on) { fxSplash(e.x, e.y, 40); fxSteam(e.x, e.y, 8); } else burst(e.x, e.y, '#6fc3ff', 40); sfx('spray'); shake(8); }
 }
 function updateFloods(g, dt) {
@@ -684,11 +684,13 @@ function updateFloods(g, dt) {
   const C = CONFIG;
   for (const f of g.floods) {
     if (f.fall > 0) { f.fall -= dt; if (!SIM && R3.on) for (let i = 0; i < 6; i++) fxAdd({ x: f.tx + rr2(-14, 14), y: f.ty + rr2(-6, 6), h: rr2(4, 6), vx: rr2(-20, 20), vy: rr2(-10, 10), vh: rr2(-6, -2), g: 9, life: 0, max: rr2(0.4, 0.7), s0: 0.5, s1: 0.3, col: 0xcdefff, add: true }); continue; }   
-    const y0 = f.y; f.y += C.TANK_FLOOD * dt;
-    for (const o of g.enemies) if (o.hp > 0 && o.kind !== 'hydrant' && o.kind !== 'tank' && Math.abs(o.x - f.x) < LANE_W / 2 + 4 && o.y >= y0 - 20 && o.y <= f.y) { kill(g, o); if (!SIM && R3.on) fxSmoke(o.x, o.y, 2); }
-    if (!SIM) for (let i = 0; i < 4; i++) { const x = f.x + rr2(-LANE_W / 2, LANE_W / 2); if (R3.on) fxAdd({ x, y: f.y + rr2(-8, 8), h: 0.3, vx: rr2(-30, 30), vy: rr2(40, 140), vh: rr2(2, 5), g: 10, life: 0, max: rr2(0.4, 0.7), s0: 0.45, s1: 0.2, col: 0x9fdcff, add: true }); else burst(x, f.y, '#6fc3ff', 1); }
+    
+    f.y += C.SCROLL * dt;   
+    const y0 = f.y; f.y -= C.TANK_FLOOD * dt;
+    for (const o of g.enemies) if (o.hp > 0 && o.kind !== 'hydrant' && o.kind !== 'tank' && Math.abs(o.x - f.x) < LANE_W / 2 + 4 && o.y <= y0 + 20 && o.y >= f.y) { kill(g, o); if (!SIM && R3.on) fxSmoke(o.x, o.y, 2); }
+    if (!SIM) for (let i = 0; i < 4; i++) { const x = f.x + rr2(-LANE_W / 2, LANE_W / 2); if (R3.on) fxAdd({ x, y: f.y + rr2(-8, 8), h: 0.3, vx: rr2(-30, 30), vy: rr2(-200, -80), vh: rr2(2, 5), g: 10, life: 0, max: rr2(0.4, 0.7), s0: 0.45, s1: 0.2, col: 0x9fdcff, add: true }); else burst(x, f.y, '#6fc3ff', 1); }
   }
-  g.floods = g.floods.filter(f => f.fall > 0 || f.y < C.LEADER_Y - 30);
+  g.floods = g.floods.filter(f => f.fall > 0 || f.y > -80);
 }
 
 function spreadFlame(g, e, dt) {

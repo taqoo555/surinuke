@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v65';
+const VERSION = 'v66';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -49,10 +49,10 @@ const CONFIG = {
   
   RANGE: 400,   
   MOVE_RATE: 0.6,                 
-  RED_MIN: 16, RED_MAX: 30,       
+  RED_MIN: 8, RED_MAX: 18,          
   MUL_RATE: 0.15,                 
   GATE_GROW: 0.25,                
-  RED_CAP: 28,                    
+  RED_CAP: 18,                       
   DIV_GATES: false,               
   RED_GROW: 0.10,                    
   ROW_MAX: 9,                     
@@ -2183,8 +2183,9 @@ function drawLabels3D(g) {
       if (sl.type === 'empty') continue;
       if (sl.type === 'tire') {
         if (sl.hp <= 0) continue;
-        const [px, py, k] = P3(cx, row.y, 2.2);
-        txt(hpText(sl), px, py - 8 * k, (sl.hitT > 0 ? 21 : 18) * k, '#ff9a5a');
+        
+        const [px, py, k] = P3(cx, row.y, 0.9);
+        txt(hpText(sl), px, py, (sl.hitT > 0 ? 19 : 16) * k, '#ff9a5a');
         continue;
       }
       if (row.done) continue;
@@ -2200,8 +2201,8 @@ function drawLabels3D(g) {
   }
   const Bs = g.boss;
   if (Bs && Bs.hp > 0 && !(g.cutT > 0)) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9);    txt(bossText(Bs), px, py, 24 * k, '#ffd0a0'); }
-  const [px, py] = P3(g.lx, CONFIG.LEADER_Y, 1.6);
-  txt(String(g.N), px, py, 20, '#fff');
+  
+  if (!g.over || g.N > 0) { const [px, py] = P3(g.lx, CONFIG.LEADER_Y + g.cDepth + (g.lvRanged ? 34 : 18), 0.05); txt(String(g.N), px, py, 20, '#fff'); }
 }
 
 let last = performance.now();

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v84';
+const VERSION = 'v85';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -135,7 +135,8 @@ const CONFIG = {
   RANGED_EVERY: 1.0, RANGED_DMG: 5, RANGED_SPEED: 380,   
   
   
-  PUMP_Y: 628, PUMP_SCALE: 0.7, PUMP_ARC: 4.5, PUMP_SPLASH: 30,
+  
+  PUMP_Y: 650, PUMP_SCALE: 0.7, PUMP_SPLASH: 30, PUMP_G: 14, PUMP_JET: 0.35, PUMP_FAR: 0.5,
   
   PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.0, PUMP_DPS: 6, PUMP_RANGE: 430, PUMP_TRACK: 220,
   PUMP_PRICE: 300, PUMP_COL_PRICE: 50, PUMP_PAT_PRICE: 80,
@@ -449,12 +450,13 @@ function freeRow(g, c) {
   function freeRowAt(r) {
   if (r < W[0]) return { parts: [red(1.2)], cuts: [] };                                            
   if (r < W[1]) {                                                                                   
-    const k = ri(0, 2), gb = rng() < 0.4 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1.3 * C.GUARD_BLUE, true);   
+    
+    const k = rng() < 0.5 ? 0 : 2, gb = rng() < 0.4 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1.3 * C.GUARD_BLUE, true);   
     if (k === 1) return { parts: [red(1.0), gb, red(1.0)], cuts: [fixed(L1), fixed(L2)], blueX: laneX(1), guard: 1 };
     return { parts: k === 0 ? [gb, red(1.2)] : [red(1.2), gb], cuts: [fixed(k === 0 ? L1 : L2)], blueX: laneX(k), guard: k };
   }
   if (r < W[2]) {                                                                                   
-    const k = ri(0, 2);
+    const k = rng() < 0.5 ? 0 : 2;   
     if (k === 0) return { parts: [obst(), red(1.1)], cuts: [fixed(L1)] };
     if (k === 2) return { parts: [red(1.1), obst()], cuts: [fixed(L2)] };
     return { parts: [red(0.8), obst(), red(0.8)], cuts: [fixed(L1), fixed(L2)] };
@@ -548,11 +550,12 @@ function buildTrack(g) {
       
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
       
-      const plans = shuffle3([
+      const plans0 = shuffle3([
         [slotRed(g, 0.6), 'squad'],   
         [slotRed(g, 1.3), slotRed(g, 0.5), 'squad'],   
         [slotTire(g, C.GUARD_HP), rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1, true)],
       ]);
+      const plans = plans0.slice(); { const ti = plans.findIndex(p => p[0].type === 'tire'); if (ti === 1) { const j = rng() < 0.5 ? 0 : 2; [plans[1], plans[j]] = [plans[j], plans[1]]; } }   
       const w0 = d + G * 0.9, len = 60 + G + 150;
       T.push({ dist: w0, kind: 'wall', len });
       T.push({ dist: w0 + 60, kind: 'row', lanes: plans.map(p => p[0]) });
@@ -573,7 +576,7 @@ function buildTrack(g) {
     if (c >= 2 && r < S.wide + S.tire) {
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
       
-      const open = ri(0, 2), wl = (open + ri(1, 2)) % 3;
+      const open = 1, wl = rng() < 0.5 ? 0 : 2;   
       T.push({ dist: d += G, kind: 'row', lanes: [0, 1, 2].map(i => i === open ? { type: 'empty' } : i === wl ? slotWeaponTire(g) : slotTire(g)) });
       T.push({ dist: d + G * 0.6, kind: 'squad', lanes: [open], rows: rows + 1, cols: 5 });   
       continue;
@@ -603,7 +606,7 @@ function buildTrack(g) {
   
   if (g.level > 1) {
     T.push({ dist: d += G * 0.8, kind: 'squad', lanes: [0, 1, 2], rows: C.FINAL_ROWS + Math.min(6, g.level - 1), cols: 4, brute: g.level >= 3 });
-    const tl = ri(0, 2); T.push({ dist: d += G * 0.9, kind: 'row', lanes: [0, 1, 2].map(i => i === tl ? slotTire(g, 0.35) : { type: 'empty' }) });
+    const tl = rng() < 0.5 ? 0 : 2; T.push({ dist: d += G * 0.9, kind: 'row', lanes: [0, 1, 2].map(i => i === tl ? slotTire(g, 0.35) : { type: 'empty' }) });
   }
   T.push({ dist: d += G * C.BOSS_AFTER, kind: 'boss' });   
   return T;
@@ -641,11 +644,22 @@ function kamiBurst(g, x, y) {
   for (const o of g.enemies) if (o.hp > 0 && o.kind !== 'hydrant' && Math.hypot(o.x - x, o.y - y) < r) kill(g, o);
   if (!SIM) { if (R3.on) { fxSplash(x, y, 40); fxSteam(x, y, 10); for (const o of g.enemies) if (o.hp <= 0 && Math.hypot(o.x - x, o.y - y) < r) fxSmoke(o.x, o.y, 1); } else burst(x, y, '#6fc3ff', 40); rings.push({ x, y, r, col: '#9fdcff', life: 0.4 }); sfx('spray'); shake(6); }
 }
-const pumpPos = g => ({ x: g.pump && g.pump.x != null ? g.pump.x : g.lx, y: CONFIG.PUMP_Y });   
+
+const pumpPos = g => ({ x: 180, y: CONFIG.PUMP_Y });
+
+function pumpArc(o, tx, ty) { const C = CONFIG, oy = o.y - 8, dist = Math.hypot(tx - o.x, ty - oy), T = 0.35 + dist / 450, h0 = 2.4 * C.PUMP_SCALE;
+  return { ox: o.x, oy, T, h0, vx: (tx - o.x) / T, vy: (ty - oy) / T, vh: (0.15 - h0 + 0.5 * C.PUMP_G * T * T) / T, dist }; }
+function sprayDrop(o, P) {
+  const C = CONFIG, f = Math.min(1, Math.hypot(P.ax - o.x, P.ay - o.y) / C.PUMP_RANGE);
+  let tx = P.ax + rr2(-1, 1) * (5 + 40 * f), ty = P.ay + rr2(-1, 1) * (4 + 26 * f);
+  if (Math.random() < 0.25) { const k = rr2(0.55, 0.9); tx = o.x + (tx - o.x) * k; ty = o.y + (ty - o.y) * k; }   
+  const a = pumpArc(o, tx, ty);
+  fxAdd({ x: a.ox, y: a.oy, h: a.h0, vx: a.vx, vy: a.vy, vh: a.vh, g: C.PUMP_G, life: 0, max: a.T * rr2(0.95, 1.05), s0: rr2(0.3, 0.4), s1: 0.1, col: 0xbfe8ff, add: true, air: true });
+}
 function updatePump(g, dt) {   
   const P = g.pump, C = CONFIG; if (!P) return;
   if (P.x == null) P.x = g.lx;
-  if (!g.halt) P.x += (g.lx - P.x) * Math.min(1, dt * 3);   
+  P.x = 180;
   if (g.over) { P.on = false; return; }
   const o = pumpPos(g);
   const pick = () => { let best = null, bd = 1e9;
@@ -654,7 +668,7 @@ function updatePump(g, dt) {
   if (!P.on) {
     P.cd -= dt; if (P.cd > 0) return;
     const t = pick(); if (!t) { P.cd = 0.2; return; }
-    P.on = true; P.spray = C.PUMP_DUR; P.t = t; P.ax = o.x; P.ay = o.y - 150; P.acc = 0;   
+    P.on = true; P.spray = C.PUMP_DUR; P.t = t; P.ax = o.x; P.ay = o.y - 150; P.acc = 0; P.age = 0;   
     if (!SIM) sfx('spray');
   }
   P.spray -= dt; if (P.spray <= 0) { P.on = false; P.cd = pumpCd(P.rate); return; }
@@ -664,12 +678,14 @@ function updatePump(g, dt) {
   const ex = P.ax - o.x, ey = P.ay - o.y, el = Math.hypot(ex, ey);
   if (el > C.PUMP_RANGE) { P.ax = o.x + ex / el * C.PUMP_RANGE; P.ay = o.y + ey / el * C.PUMP_RANGE; }
   P.ay = Math.min(P.ay, o.y - 70);   
-  P.acc += dt;
-  if (P.acc >= 0.1) {   
-    const d = C.PUMP_DPS * g.power * (1 + 0.3 * P.pow) * P.acc; P.acc = 0;
+  P.acc += dt; P.age = (P.age || 0) + dt;
+  if (P.age < pumpArc(o, P.ax, P.ay).T * 0.8) P.acc = 0;   
+  else if (P.acc >= 0.1) {   
+    const far = Math.min(1, Math.hypot(P.ax - o.x, P.ay - o.y) / C.PUMP_RANGE), d = C.PUMP_DPS * g.power * (1 + 0.3 * P.pow) * P.acc * (1 - (1 - C.PUMP_FAR) * far); P.acc = 0;   
     for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && Math.hypot(e.x - P.ax, e.y - P.ay) < pumpSplash(P.area) + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }   
     const B = g.boss; if (B && B.hp > 0 && Math.hypot(B.x - P.ax, B.y - P.ay) < pumpSplash(P.area) + B.r) hurt(g, B, d);
   }
+  if (!SIM && R3.on) { P.dropT = (P.dropT || 0) + dt; while (P.dropT > 1 / 70) { P.dropT -= 1 / 70; sprayDrop(o, P); } }
   if (!SIM && Math.random() < 0.5) { if (R3.on) fxSplash(P.ax + rr2(-1, 1) * pumpSplash(P.area) * 0.6, P.ay + rr2(-1, 1) * pumpSplash(P.area) * 0.4, 1 + (P.area >> 1)); else burst(P.ax, P.ay, '#9fdcff', 2); }
 }
 function updateSpecials(g, dt) {
@@ -2227,16 +2243,14 @@ function renderPump3D(g, R) {
   R.pTurret.rotation.y = Math.atan2(-tx, -tz);
   if (!P.on) return;
   
-  const ry = R.pTurret.rotation.y, sx = x - Math.sin(ry) * 0.6 * S, sz = z - Math.cos(ry) * 0.6 * S, sy = 2.4 * S;
-  const ex = wx(P.ax), ez = wz(P.ay), ey = 0.2, len0 = Math.hypot(ex - sx, ez - sz);
-  const cx = (sx + ex) / 2, cz = (sz + ez) / 2, cy = Math.max(sy, ey) + CONFIG.PUMP_ARC * Math.min(1, len0 / 12) * 2;
-  const pt = t => [(1 - t) * (1 - t) * sx + 2 * (1 - t) * t * cx + t * t * ex, (1 - t) * (1 - t) * sy + 2 * (1 - t) * t * cy + t * t * ey, (1 - t) * (1 - t) * sz + 2 * (1 - t) * t * cz + t * t * ez];
-  const d = R.dummy, N = 14, up = R.up || (R.up = new R.T.Vector3(0, 1, 0)), wob = 1 + 0.12 * Math.sin(performance.now() / 40);
-  let a = pt(0);
-  for (let k = 0; k < N; k++) {
-    const b = pt((k + 1) / N), v = R.v.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = v.length() * 1.15; v.normalize();
+  const A = pumpArc(o, P.ax, P.ay), d = R.dummy, N = 8, up = R.up || (R.up = new R.T.Vector3(0, 1, 0)), wob = 1 + 0.1 * Math.sin(performance.now() / 40);
+  const at = tt => { const tau = tt * A.T; return [wx(A.ox + A.vx * tau), A.h0 + A.vh * tau - 0.5 * CONFIG.PUMP_G * tau * tau, wz(A.oy + A.vy * tau)]; };
+  let a = at(0);
+  for (let k = 0; k < 14; k++) {
+    if (k >= N) { d.scale.set(0, 0, 0); d.updateMatrix(); R.beam.setMatrixAt(k, d.matrix); R.beamCore.setMatrixAt(k, d.matrix); continue; }
+    const b = at(CONFIG.PUMP_JET * (k + 1) / N), v = R.v.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = v.length() * 1.15; v.normalize();
     d.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); d.quaternion.setFromUnitVectors(up, v);
-    const r0 = 0.26 * wob * (0.8 + 0.4 * k / N);   
+    const r0 = 0.2 * wob * (1 - 0.7 * k / N);
     d.scale.set(r0, L, r0); d.updateMatrix(); R.beam.setMatrixAt(k, d.matrix);
     d.scale.set(r0 * 0.45, L, r0 * 0.45); d.updateMatrix(); R.beamCore.setMatrixAt(k, d.matrix);
     a = b;
@@ -2303,7 +2317,7 @@ function drawFx3(dt) {
   let np = 0, ns = 0;
   for (const p of fx3) {
     p.life += dt;
-    p.x += p.vx * dt; p.y += (p.vy + (game && game.halt ? 0 : CONFIG.SCROLL)) * dt; p.h = Math.max(0.05, p.h + p.vh * dt); p.vh -= p.g * dt;
+    p.x += p.vx * dt; p.y += (p.vy + (p.air || (game && game.halt) ? 0 : CONFIG.SCROLL)) * dt;    p.h = Math.max(0.05, p.h + p.vh * dt); p.vh -= p.g * dt;
     const t = p.life / p.max, s = (p.s0 + (p.s1 - p.s0) * t) * Math.min(1, (1 - t) / 0.3);
     d.quaternion.copy(R.cam.quaternion); d.position.set(wx(p.x), p.h, wz(p.y)); d.scale.set(s, s, 1); d.updateMatrix();
     if (p.add) { if (ns < 400) { R.sparkIM.setMatrixAt(ns, d.matrix); R.col.setHex(p.col).multiplyScalar(Math.max(0, 1 - t * 0.7)); R.sparkIM.setColorAt(ns, R.col); ns++; } }

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v85';
+const VERSION = 'v86';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -136,9 +136,10 @@ const CONFIG = {
   
   
   
-  PUMP_Y: 650, PUMP_SCALE: 0.7, PUMP_SPLASH: 30, PUMP_G: 14, PUMP_JET: 0.35, PUMP_FAR: 0.5,
   
-  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.0, PUMP_DPS: 6, PUMP_RANGE: 430, PUMP_TRACK: 220,
+  PUMP_Y: 650, PUMP_SCALE: 0.7, PUMP_G: 14, PUMP_CORE: 16, PUMP_SPREAD: 0.4, PUMP_MIN: 0.25, PUMP_REACH: 200, PUMP_REACH_UP: 40,
+  
+  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.0, PUMP_DPS: 6, PUMP_RANGE: 480, PUMP_TRACK: 220,
   PUMP_PRICE: 300, PUMP_COL_PRICE: 50, PUMP_PAT_PRICE: 80,
   SPECIAL_GAP: 34,                
   SPECIAL_FRONT: 18,              
@@ -213,12 +214,14 @@ const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[2], SHOP_V24[3], PUMP_CARD];
 const PUMP_PERF = [
   { key: 'lvPumpPow',   name: 'POWER',      base: 80, grow: 1.5, eff: lv => String(Math.round(CONFIG.TIRE_SHOW * CONFIG.PUMP_DPS * (1 + 0.3 * lv))) + '/s' },
   { key: 'lvPumpRate',  name: 'FREQUENCY',  base: 80, grow: 1.5, eff: lv => pumpCd(lv).toFixed(1) + 's' },
-  { key: 'lvPumpArea',  name: 'RANGE',      base: 80, grow: 1.5, eff: lv => String(pumpSplash(lv)) },
+  { key: 'lvPumpArea',  name: 'RANGE',      base: 80, grow: 1.5, eff: lv => String(pumpReach(lv)) },   
 ];
 const PUMP_COLORS = [0xd8262a, 0x2f7bd8, 0xf2c21a, 0xff7ab0, 0x3fb85a, 0x2a2d34];
 const PUMP_PATS = ['NONE', 'STRIPES', 'STARS', 'FLAMES'];
 const pumpCd = lv => Math.max(CONFIG.PUMP_CD_MIN, CONFIG.PUMP_CD * Math.pow(CONFIG.PUMP_CD_DOWN, lv));   
-const pumpSplash = lv => CONFIG.PUMP_SPLASH + CONFIG.PUMP_SPLASH_UP * lv;                          
+const pumpReach = lv => CONFIG.PUMP_REACH + CONFIG.PUMP_REACH_UP * lv;                            
+function pumpSpread(P, dist) { const C = CONFIG, over = Math.max(0, dist - pumpReach(P.area)), r = C.PUMP_CORE + over * C.PUMP_SPREAD;
+  return { r, k: Math.max(C.PUMP_MIN, C.PUMP_CORE / r), over }; }                                   
 
 function powerOf(m) { const C = CONFIG; return Math.round(10 * (1 + C.UP_DMG * m.lvDmg) * (1 + C.UP_RATE * m.lvRate) * (C.START_UNITS + C.UP_ARMY * m.lvArmy)); }
 
@@ -650,11 +653,17 @@ const pumpPos = g => ({ x: 180, y: CONFIG.PUMP_Y });
 function pumpArc(o, tx, ty) { const C = CONFIG, oy = o.y - 8, dist = Math.hypot(tx - o.x, ty - oy), T = 0.35 + dist / 450, h0 = 2.4 * C.PUMP_SCALE;
   return { ox: o.x, oy, T, h0, vx: (tx - o.x) / T, vy: (ty - oy) / T, vh: (0.15 - h0 + 0.5 * C.PUMP_G * T * T) / T, dist }; }
 function sprayDrop(o, P) {
-  const C = CONFIG, f = Math.min(1, Math.hypot(P.ax - o.x, P.ay - o.y) / C.PUMP_RANGE);
-  let tx = P.ax + rr2(-1, 1) * (5 + 40 * f), ty = P.ay + rr2(-1, 1) * (4 + 26 * f);
-  if (Math.random() < 0.25) { const k = rr2(0.55, 0.9); tx = o.x + (tx - o.x) * k; ty = o.y + (ty - o.y) * k; }   
+  const C = CONFIG, sp = pumpSpread(P, Math.hypot(P.ax - o.x, P.ay - o.y)), a0 = rr2(0, 6.28), rr0 = sp.r * Math.sqrt(Math.random());
+  let tx = P.ax + Math.cos(a0) * rr0, ty = P.ay + Math.sin(a0) * rr0 * 0.7;   
+  if (Math.random() < Math.min(0.25, sp.over / 600)) {    const k = rr2(0.55, 0.9); tx = o.x + (tx - o.x) * k; ty = o.y + (ty - o.y) * k; }   
   const a = pumpArc(o, tx, ty);
   fxAdd({ x: a.ox, y: a.oy, h: a.h0, vx: a.vx, vy: a.vy, vh: a.vh, g: C.PUMP_G, life: 0, max: a.T * rr2(0.95, 1.05), s0: rr2(0.3, 0.4), s1: 0.1, col: 0xbfe8ff, add: true, air: true });
+}
+
+function pumpAim(g, o, t) {
+  if (t === g.boss) return { x: t.x, y: t.y + t.r * 0.6 };
+  const T = pumpArc(o, t.x, t.y).T, vy = (t.vy || 0) + (g.halt ? 0 : CONFIG.SCROLL);
+  return { x: t.x, y: Math.min(t.y + vy * T, CONFIG.LEADER_Y - 20) };
 }
 function updatePump(g, dt) {   
   const P = g.pump, C = CONFIG; if (!P) return;
@@ -668,25 +677,25 @@ function updatePump(g, dt) {
   if (!P.on) {
     P.cd -= dt; if (P.cd > 0) return;
     const t = pick(); if (!t) { P.cd = 0.2; return; }
-    P.on = true; P.spray = C.PUMP_DUR; P.t = t; P.ax = o.x; P.ay = o.y - 150; P.acc = 0; P.age = 0;   
+    P.on = true; P.spray = C.PUMP_DUR; P.t = t; P.acc = 0; P.age = 0; { const a = pumpAim(g, o, t); P.ax = a.x; P.ay = a.y; }      
     if (!SIM) sfx('spray');
   }
   P.spray -= dt; if (P.spray <= 0) { P.on = false; P.cd = pumpCd(P.rate); return; }
   if (!P.t || P.t.hp <= 0 || (P.t !== g.boss && P.t.y > C.LEADER_Y - 10)) P.t = pick() || (P.t && P.t.hp > 0 && P.t.y <= C.LEADER_Y - 10 ? P.t : null);   
-  if (P.t) { const dx = P.t.x - P.ax, dy = P.t.y - P.ay, d = Math.hypot(dx, dy), v = C.PUMP_TRACK * dt;
-    if (d <= v) { P.ax = P.t.x; P.ay = P.t.y; } else { P.ax += dx / d * v; P.ay += dy / d * v; } }
+  if (P.t) { const tg = pumpAim(g, o, P.t), dx = tg.x - P.ax, dy = tg.y - P.ay, d = Math.hypot(dx, dy), v = C.PUMP_TRACK * dt;
+    if (d <= v) { P.ax = tg.x; P.ay = tg.y; } else { P.ax += dx / d * v; P.ay += dy / d * v; } }
   const ex = P.ax - o.x, ey = P.ay - o.y, el = Math.hypot(ex, ey);
   if (el > C.PUMP_RANGE) { P.ax = o.x + ex / el * C.PUMP_RANGE; P.ay = o.y + ey / el * C.PUMP_RANGE; }
   P.ay = Math.min(P.ay, o.y - 70);   
   P.acc += dt; P.age = (P.age || 0) + dt;
   if (P.age < pumpArc(o, P.ax, P.ay).T * 0.8) P.acc = 0;   
   else if (P.acc >= 0.1) {   
-    const far = Math.min(1, Math.hypot(P.ax - o.x, P.ay - o.y) / C.PUMP_RANGE), d = C.PUMP_DPS * g.power * (1 + 0.3 * P.pow) * P.acc * (1 - (1 - C.PUMP_FAR) * far); P.acc = 0;   
-    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && Math.hypot(e.x - P.ax, e.y - P.ay) < pumpSplash(P.area) + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }   
-    const B = g.boss; if (B && B.hp > 0 && Math.hypot(B.x - P.ax, B.y - P.ay) < pumpSplash(P.area) + B.r) hurt(g, B, d);
+    const sp = pumpSpread(P, Math.hypot(P.ax - o.x, P.ay - o.y)), d = C.PUMP_DPS * g.power * (1 + 0.3 * P.pow) * P.acc * sp.k; P.acc = 0;   
+    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && Math.hypot(e.x - P.ax, e.y - P.ay) < sp.r + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }   
+    const B = g.boss; if (B && B.hp > 0 && Math.hypot(B.x - P.ax, B.y - P.ay) < sp.r + B.r) hurt(g, B, d);
   }
   if (!SIM && R3.on) { P.dropT = (P.dropT || 0) + dt; while (P.dropT > 1 / 70) { P.dropT -= 1 / 70; sprayDrop(o, P); } }
-  if (!SIM && Math.random() < 0.5) { if (R3.on) fxSplash(P.ax + rr2(-1, 1) * pumpSplash(P.area) * 0.6, P.ay + rr2(-1, 1) * pumpSplash(P.area) * 0.4, 1 + (P.area >> 1)); else burst(P.ax, P.ay, '#9fdcff', 2); }
+  if (!SIM && Math.random() < 0.5) { const r = pumpSpread(P, Math.hypot(P.ax - o.x, P.ay - o.y)).r; if (R3.on) fxSplash(P.ax + rr2(-1, 1) * r * 0.7, P.ay + rr2(-1, 1) * r * 0.5, 1); else burst(P.ax, P.ay, '#9fdcff', 2); }
 }
 function updateSpecials(g, dt) {
   const C = CONFIG;
@@ -2244,13 +2253,14 @@ function renderPump3D(g, R) {
   if (!P.on) return;
   
   const A = pumpArc(o, P.ax, P.ay), d = R.dummy, N = 8, up = R.up || (R.up = new R.T.Vector3(0, 1, 0)), wob = 1 + 0.1 * Math.sin(performance.now() / 40);
+  const jet = Math.min(1, pumpReach(P.area) / Math.max(1, A.dist));
   const at = tt => { const tau = tt * A.T; return [wx(A.ox + A.vx * tau), A.h0 + A.vh * tau - 0.5 * CONFIG.PUMP_G * tau * tau, wz(A.oy + A.vy * tau)]; };
   let a = at(0);
   for (let k = 0; k < 14; k++) {
     if (k >= N) { d.scale.set(0, 0, 0); d.updateMatrix(); R.beam.setMatrixAt(k, d.matrix); R.beamCore.setMatrixAt(k, d.matrix); continue; }
-    const b = at(CONFIG.PUMP_JET * (k + 1) / N), v = R.v.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = v.length() * 1.15; v.normalize();
+    const b = at(jet * (k + 1) / N), v = R.v.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = v.length() * 1.15; v.normalize();
     d.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); d.quaternion.setFromUnitVectors(up, v);
-    const r0 = 0.2 * wob * (1 - 0.7 * k / N);
+    const r0 = 0.2 * wob * (1 - 0.4 * k / N);
     d.scale.set(r0, L, r0); d.updateMatrix(); R.beam.setMatrixAt(k, d.matrix);
     d.scale.set(r0 * 0.45, L, r0 * 0.45); d.updateMatrix(); R.beamCore.setMatrixAt(k, d.matrix);
     a = b;

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v89';
+const VERSION = 'v90';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -137,9 +137,10 @@ const CONFIG = {
   
   
   
-  PUMP_Y: 650, PUMP_SCALE: 0.7, PUMP_G: 14, PUMP_CORE: 16, PUMP_SPREAD: 0.4, PUMP_MIN: 0.25, PUMP_REACH: 200, PUMP_REACH_UP: 40,
+  PUMP_Y: 650, PUMP_SCALE: 0.7, PUMP_G: 14, PUMP_CORE: 16, PUMP_SPREAD: 0.4, PUMP_MIN: 0.25, PUMP_REACH: 320, PUMP_REACH_UP: 40,
   
-  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.0, PUMP_DPS: 6, PUMP_RANGE: 480, PUMP_TRACK: 220,
+  
+  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.0, PUMP_DPS: 6, PUMP_RANGE: 560, PUMP_AHEAD: 80, PUMP_TRACK: 220,
   PUMP_PRICE: 300, PUMP_COL_PRICE: 50, PUMP_PAT_PRICE: 80,
   SPECIAL_GAP: 34,                
   SPECIAL_FRONT: 18,              
@@ -680,7 +681,8 @@ function updatePump(g, dt) {
   if (g.over) { P.on = false; return; }
   const o = pumpPos(g);
   const pick = () => { let best = null, bd = 1e9;
-    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && e.y < C.LEADER_Y) { const d = Math.hypot(e.x - o.x, e.y - o.y); if (d < bd && d < C.PUMP_RANGE) { bd = d; best = e; } }
+    
+    for (const pass of [C.LEADER_Y - C.PUMP_AHEAD, C.LEADER_Y]) { for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > 10 && e.y < pass) { const d = Math.hypot(e.x - o.x, e.y - o.y); if (d < bd && d < C.PUMP_RANGE) { bd = d; best = e; } } if (best) break; }
     if (!best && g.boss && g.boss.hp > 0 && g.boss.y > 0) best = g.boss; return best; };
   if (!P.on) {
     P.cd -= dt; if (P.cd > 0) return;

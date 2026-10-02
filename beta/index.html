@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v91';
+const VERSION = 'v92';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -691,7 +691,7 @@ function updatePump(g, dt) {
     P.cd -= dt; if (P.cd > 0) return;
     const t = pick(); if (!t) { P.cd = 0.2; return; }
     P.on = true; P.spray = C.PUMP_DUR; P.t = t; P.acc = 0; P.age = 0; { const a = pumpAim(g, o, t); P.ax = a.x; P.ay = a.y; }      
-    if (!SIM) sfx('spray');
+    if (!SIM) sfx('pump');   
   }
   P.spray -= dt; if (P.spray <= 0) { P.on = false; P.cd = pumpCd(P.rate); return; }
   if (!P.t || P.t.hp <= 0 || (P.t !== g.boss && P.t.y > C.LEADER_Y - 10)) P.t = pick() || (P.t && P.t.hp > 0 && P.t.y <= C.LEADER_Y - 10 ? P.t : null);   
@@ -1297,6 +1297,7 @@ function sfx(k) {
     case 'tick': tone(392, 0.12, 'triangle', 0.45); break;   
     case 'siren': [0, 1, 2, 3].forEach(i => setTimeout(() => tone(i % 2 ? 440 : 587, 0.24, 'square', 0.28), i * 250)); break;   
     case 'spray': noise(1.1, 0.5, 1800); tone(300, 0.5, 'sine', 0.2, 120); break;   
+    case 'pump': noise(0.5, 0.07, 2600); break;   
     case 'go': tone(523, 0.1, 'triangle', 0.5); setTimeout(() => tone(784, 0.25, 'triangle', 0.5), 70); break;
   }
 }

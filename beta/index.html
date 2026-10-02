@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v87';
+const VERSION = 'v88';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -354,6 +354,9 @@ function slotRed(g, big, allowDiv) {
 
 
 function easeOf(level) { const e = CONFIG.EASE; return level === 1 ? CONFIG.STAGE1_HP : (level - 1 < e.length ? e[level - 1] : 1) * (level >= 4 ? CONFIG.STAGE_DIFF[(level - 1) % 6] : 1); }   
+
+function guardTire(t, gate) { const lock = { open: false }; t.opens = lock; gate.lock = lock; return t; }
+const gateLocked = sl => !!(sl.lock && !sl.lock.open);
 function slotTire(g, m) { const hp = Math.round((CONFIG.TIRE_BASE + CONFIG.TIRE_HP * g.chunk) * Math.pow(recPower(g.level) / 10, CONFIG.TIRE_POW) * (m || 1) * easeOf(g.level)) * CONFIG.TIRE_SHOW;    return { type: 'tire', hp, max: hp, hitT: 0, coinAcc: 0 }; }
 
 const WEAPONS = [
@@ -455,8 +458,8 @@ function freeRow(g, c) {
   if (r < W[1]) {                                                                                   
     
     const k = rng() < 0.5 ? 0 : 2, gb = rng() < 0.4 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1.3 * C.GUARD_BLUE, true);   
-    if (k === 1) return { parts: [red(1.0), gb, red(1.0)], cuts: [fixed(L1), fixed(L2)], blueX: laneX(1), guard: 1 };
-    return { parts: k === 0 ? [gb, red(1.2)] : [red(1.2), gb], cuts: [fixed(k === 0 ? L1 : L2)], blueX: laneX(k), guard: k };
+    if (k === 1) return { parts: [red(1.0), gb, red(1.0)], cuts: [fixed(L1), fixed(L2)], blueX: laneX(1), guard: 1, gate: gb };
+    return { parts: k === 0 ? [gb, red(1.2)] : [red(1.2), gb], cuts: [fixed(k === 0 ? L1 : L2)], blueX: laneX(k), guard: k, gate: gb };
   }
   if (r < W[2]) {                                                                                   
     const k = rng() < 0.5 ? 0 : 2;   
@@ -541,7 +544,7 @@ function buildTrack(g) {
       
       const upBlue = k % 3 === 0 && rng() < C.LANE_BLUE;   
       const upSlot = upBlue ? slotBlue(g, 0.9, true) : k % 3 === 2 ? slotTire(g, 0.6) : slotRed(g, 0.6);
-      if (upBlue) T.push({ dist: d + G * 0.9 - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === up ? slotTire(g, C.GUARD_HP) : { type: 'empty' }) });
+      if (upBlue) T.push({ dist: d + G * 0.9 - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === up ? guardTire(slotTire(g, C.GUARD_HP), upSlot) : { type: 'empty' }) });
       const big = rng() < 0.5 ? 0 : 1;
       const lanes = [];
       lanes[up] = upSlot; lanes[mon[big]] = slotRed(g, 0.8); lanes[mon[1 - big]] = slotRed(g);
@@ -556,7 +559,7 @@ function buildTrack(g) {
       const plans0 = shuffle3([
         [slotRed(g, 0.6), 'squad'],   
         [slotRed(g, 1.3), slotRed(g, 0.5), 'squad'],   
-        [slotTire(g, C.GUARD_HP), rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1, true)],
+        (gb2 => [guardTire(slotTire(g, C.GUARD_HP), gb2), gb2])(rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1, true)),
       ]);
       const plans = plans0.slice(); { const ti = plans.findIndex(p => p[0].type === 'tire'); if (ti === 1) { const j = rng() < 0.5 ? 0 : 2; [plans[1], plans[j]] = [plans[j], plans[1]]; } }   
       const w0 = d + G * 0.9, len = 60 + G + 150;
@@ -598,7 +601,7 @@ function buildTrack(g) {
     
     T.push({ dist: d += (c === 0 ? 40 : G * C.SQUAD_AFTER), kind: 'squad', lanes: [sl], rows: rows + (strong ? C.HARD_ROWS : 0), cols: strong ? Math.max(cols, 5) : cols, brute: strong && g.level >= 3, soft: c < 2 && g.level <= 2, mix: c >= 1 ? mixOf(g) : null });
     
-    if (fr.guard != null) T.push({ dist: d + G - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? slotTire(g, C.GUARD_HP * (c < 2 ? C.GUARD_EARLY : 1)) : { type: 'empty' }) });
+    if (fr.guard != null) T.push({ dist: d + G - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? guardTire(slotTire(g, C.GUARD_HP * (c < 2 ? C.GUARD_EARLY : 1)), fr.gate) : { type: 'empty' }) });
     T.push({ dist: d += G, kind: 'row', free: fr });
     
     if (c >= 1 && rng() < C.FILLER) T.splice(T.length - 1, 0, { dist: d - G * 0.6, kind: 'squad', lanes: [ri(0, 2)], rows: 1, cols: ri(2, 3) });
@@ -650,8 +653,11 @@ function kamiBurst(g, x, y) {
 
 const pumpPos = g => ({ x: 180, y: CONFIG.PUMP_Y });
 
-function pumpArc(o, tx, ty) { const C = CONFIG, oy = o.y - 8, dist = Math.hypot(tx - o.x, ty - oy), T = 0.35 + dist / 450, h0 = 2.4 * C.PUMP_SCALE;
-  return { ox: o.x, oy, T, h0, vx: (tx - o.x) / T, vy: (ty - oy) / T, vh: (0.15 - h0 + 0.5 * C.PUMP_G * T * T) / T, dist }; }
+
+function pumpArc(o, tx, ty) { const C = CONFIG, S = C.PUMP_SCALE, dx0 = tx - o.x, dy0 = ty - o.y, l0 = Math.hypot(dx0, dy0) || 1;
+  const ox = o.x + dx0 / l0 * 1.03 * S * U3, oy = o.y + 0.1 * S * U3 + dy0 / l0 * 1.03 * S * U3, h0 = (2.1 + 0.34) * S;
+  const dist = Math.hypot(tx - ox, ty - oy), T = 0.35 + dist / 450;
+  return { ox, oy, T, h0, vx: (tx - ox) / T, vy: (ty - oy) / T, vh: (0.15 - h0 + 0.5 * C.PUMP_G * T * T) / T, dist }; }
 function sprayDrop(o, P) {
   const C = CONFIG, sp = pumpSpread(P, Math.hypot(P.ax - o.x, P.ay - o.y)), a0 = rr2(0, 6.28), rr0 = sp.r * Math.sqrt(Math.random());
   let tx = P.ax + Math.cos(a0) * rr0, ty = P.ay + Math.sin(a0) * rr0 * 0.7;   
@@ -902,7 +908,7 @@ function update(g, dt) {
     const cxOf = sl => { const z = row.segs.find(z => z.s === sl); return z ? (z.x0 + z.x1) / 2 : g.lx; };
     
     const hits = [...inS].filter(([sl, n]) => n > 0 && n >= tot * 0.2).map(([sl]) => sl)
-      .filter(x => x.type !== 'tire' && x.type !== 'empty')
+      .filter(x => x.type !== 'tire' && x.type !== 'empty' && !gateLocked(x))   
       .sort((a, b) => (a.type !== 'add') - (b.type !== 'add'));   
     hits.forEach((x, k) => {
       applyGate(g, x);
@@ -958,6 +964,7 @@ function update(g, dt) {
         while (sl.coinAcc >= sl.max / 8) { sl.coinAcc -= sl.max / 8; addCoins(g, 1 + Math.floor(g.level / 2), b.x, row.y - 10); }
         if (sl.hp <= 0) {
           (g.brk = g.brk || []).push(g.t - sl.t0);
+          if (sl.opens) sl.opens.open = true;   
           if (sl.weapon && !sl.got) {   
             sl.got = true; g.wGot++; g.wlv = Math.min(WEAPONS.length - 1, g.wlv + 1);
             if (!SIM) { weaponFx(weapon(g)); burst(zx, row.y, weapon(g).color, 30); sfx('combo'); shake(5); }
@@ -1447,7 +1454,7 @@ function drawRows(g, dt) {
       if (sl.type === 'empty') continue;
       if (sl.type === 'tire') { drawTire(g, sl, cx, row.y); continue; }
       if (row.done) continue;   
-      drawGateSide(z.x0, z.x1, row.y, sl, false, dt);
+      drawGateSide(z.x0, z.x1, row.y, sl, gateLocked(sl), dt);
     }
   }
 }
@@ -2216,7 +2223,7 @@ function init3D() {
     const pLight = new T.Mesh(new T.BoxGeometry(0.7, 0.14, 0.2), B(0xff3030)); pLight.position.set(0, 1.32, -1.4); pump.add(pLight);
     const pTurret = new T.Group(); pTurret.position.set(0, 2.1, 0.1); pump.add(pTurret);
     const pBase = new T.Mesh(new T.CylinderGeometry(0.32, 0.38, 0.3, 12), M(0xc8ccd4)); pTurret.add(pBase);
-    const pNoz = new T.Mesh(new T.CylinderGeometry(0.11, 0.16, 1.1, 10), M(0xffd84a)); pNoz.rotation.x = -Math.PI / 2 + 0.25; pNoz.position.set(0, 0.2, -0.5); pTurret.add(pNoz);
+    const pNoz = new T.Mesh(new T.CylinderGeometry(0.2, 0.24, 1.1, 12), M(0xffd84a));    pNoz.rotation.x = -Math.PI / 2 + 0.25; pNoz.position.set(0, 0.2, -0.5); pTurret.add(pNoz);
     pBody.castShadow = true; pump.visible = false; scene3.add(pump);   
     
     const beam = new T.InstancedMesh(new T.CylinderGeometry(1, 1, 1, 8, 1, true), new T.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.55, depthWrite: false }), 14);
@@ -2269,7 +2276,7 @@ function renderPump3D(g, R) {
     let tx = c2[0] - c1[0], ty = c2[1] - c1[1], tz = c2[2] - c1[2]; const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
     let nx = -tz, nz = tx; const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;   
     const bx = -ty * nz, by = tx * nz - tz * nx, bz = ty * nx;                        
-    const r = (0.26 + 0.035 * Math.sin(now / 45 + u * 9)) * (1 - 0.3 * u) * (jet < 1 ? Math.min(1, (1 - u) * 6 + 0.35) : 1);
+    const r = (0.13 + 0.12 * Math.min(1, u / 0.3) + 0.03 * Math.min(1, u / 0.2) * Math.sin(now / 45 + u * 9)) * (1 - 0.25 * u)    * (jet < 1 ? Math.min(1, (1 - u) * 6 + 0.35) : 1);
     for (let j = 0; j < NR; j++) {
       const th = j / NR * Math.PI * 2, cs = Math.cos(th), sn = Math.sin(th), k = (i * NR + j) * 3;
       pos[k] = c[0] + r * (cs * nx + sn * bx); pos[k + 1] = c[1] + r * (sn * by); pos[k + 2] = c[2] + r * (cs * nz + sn * bz);
@@ -2411,7 +2418,7 @@ function render3D(g, sx, sy) {
       
       const sink = row.done ? 1 - (g.t - (row.goneT || 0)) / 0.15 : 1;
       if (sink <= 0) continue;
-      const taken = false, H = 2.3 * sink;
+      const taken = gateLocked(sl), H = 2.3 * sink;   
       const pn = R.panels.get(); pn.material = taken ? R.matDim : sl.good ? R.matBlue : R.matRed;
       pn.position.set(cx, H / 2, z); pn.scale.set(Math.max(0.05, w - 0.12), H, 0.08);
       const fm = sl.good ? R.matBlueF : R.matRedF;
@@ -2587,7 +2594,7 @@ function drawLabels3D(g) {
       const [px, py, k] = P3(cx, row.y, 1.15), [ax] = P3(s.x0, row.y, 1.15), [bx] = P3(s.x1, row.y, 1.15);
       const fs = clamp((bx - ax) * 0.42, 9, 24 * k);
       if (sl.type === 'div') { txt('÷2', px, py, fs, '#fff'); continue; }
-      txt(gateLabel(sl), px, py, sl.hitT > 0 ? fs * 1.12 : fs, '#fff');
+      txt(gateLabel(sl), px, py, sl.hitT > 0 ? fs * 1.12 : fs, gateLocked(sl) ? 'rgba(255,255,255,0.35)' : '#fff');
     }
   }
   if (g.lvGuard && !g.over) {   

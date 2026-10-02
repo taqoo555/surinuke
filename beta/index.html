@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v82';
+const VERSION = 'v83';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -133,6 +133,9 @@ const CONFIG = {
   GUARD_BLOCK: 3, GUARD_REGEN: 6,   
   KAMI_CD: 8, KAMI_R: 60,         
   RANGED_EVERY: 1.0, RANGED_DMG: 5, RANGED_SPEED: 380,   
+  
+  PUMP_GAP: 62, PUMP_CD: 3.5, PUMP_DUR: 1.6, PUMP_DPS: 6, PUMP_W: 22, PUMP_RANGE: 430, PUMP_TRACK: 140, PUMP_TRACK_UP: 50,
+  PUMP_PRICE: 300, PUMP_COL_PRICE: 50, PUMP_PAT_PRICE: 80,
   SPECIAL_GAP: 34,                
   SPECIAL_FRONT: 18,              
   UP_ARMY: 1,                     
@@ -160,7 +163,8 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const SAVE_KEY = 'wars_meta_v24';
 const OLD_KEYS = ['surinuke_meta'];   
 let saveOK = false;
-function defaultMeta() { return { coins: 0, level: 1, lvRate: 0, lvDmg: 0, lvIncome: 0, lvArmy: 0, lvGuard: 0, lvKami: 0, lvRanged: 0 }; }
+function defaultMeta() { return { coins: 0, level: 1, lvRate: 0, lvDmg: 0, lvIncome: 0, lvArmy: 0, lvGuard: 0, lvKami: 0, lvRanged: 0,
+  hasPump: 0, lvPumpPow: 0, lvPumpDur: 0, lvPumpTrack: 0, pumpColor: 0, pumpPat: 0, pumpCols: [0], pumpPats: [0] }; }   
 let meta = defaultMeta();
 function loadMeta() {
   try {
@@ -199,7 +203,17 @@ const UNITS = [
   { key: 'lvRanged', icon: 'ranged', name: 'SNIPER', col: '#7dff9b', unit: true, base: 300, grow: 1.5, eff: lv => lv ? 'LV ' + lv : 'HIRE' },
 ];
 
-const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[2], SHOP_V24[3], ...UNITS];
+
+const PUMP_CARD = { key: 'pump', icon: 'pump', name: 'PUMP TRUCK', garage: true, eff: () => meta.hasPump ? 'CUSTOM' : 'GET' };
+const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[2], SHOP_V24[3], PUMP_CARD];
+const PUMP_PERF = [
+  { key: 'lvPumpPow',   name: 'POWER',      base: 80, grow: 1.5, eff: lv => String(Math.round(CONFIG.TIRE_SHOW * CONFIG.PUMP_DPS * (1 + 0.3 * lv))) + '/s' },
+  { key: 'lvPumpDur',   name: 'SPRAY TIME', base: 80, grow: 1.5, eff: lv => pumpDur(lv).toFixed(1) + 's' },
+  { key: 'lvPumpTrack', name: 'TRACKING',   base: 80, grow: 1.5, eff: lv => 'LV ' + (lv + 1) },
+];
+const PUMP_COLORS = [0xd8262a, 0x2f7bd8, 0xf2c21a, 0xff7ab0, 0x3fb85a, 0x2a2d34];
+const PUMP_PATS = ['NONE', 'STRIPES', 'STARS', 'FLAMES'];
+const pumpDur = lv => CONFIG.PUMP_DUR + 0.4 * lv;
 
 function powerOf(m) { const C = CONFIG; return Math.round(10 * (1 + C.UP_DMG * m.lvDmg) * (1 + C.UP_RATE * m.lvRate) * (C.START_UNITS + C.UP_ARMY * m.lvArmy)); }
 
@@ -223,7 +237,8 @@ function newRun(level, m, seed) {
   const g = {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
     t: 0, over: null,
-    lvGuard: m.lvGuard || 0, lvKami: 0, lvRanged: m.lvRanged || 0,   
+    lvGuard: 0, lvKami: 0, lvRanged: 0,   
+    pump: m.hasPump ? { pow: m.lvPumpPow || 0, dur: m.lvPumpDur || 0, track: m.lvPumpTrack || 0, cd: 1.5, spray: 0, ax: 180, ay: 300, on: false, x: null, acc: 0, t: null } : null,
     guardHp: m.lvGuard ? guardMax(m.lvGuard) : 0, guardT: 0, kamiReady: !!m.lvKami, kamiT: 0, rangedT: 1, missiles: [],
     N: C.START_UNITS + C.UP_ARMY * m.lvArmy,   
     power: 1 + C.UP_DMG * m.lvDmg, rateMul: 1 + C.UP_RATE * m.lvRate, income: 1 + C.UP_INCOME * m.lvIncome,
@@ -622,8 +637,41 @@ function kamiBurst(g, x, y) {
   for (const o of g.enemies) if (o.hp > 0 && o.kind !== 'hydrant' && Math.hypot(o.x - x, o.y - y) < r) kill(g, o);
   if (!SIM) { if (R3.on) { fxSplash(x, y, 40); fxSteam(x, y, 10); for (const o of g.enemies) if (o.hp <= 0 && Math.hypot(o.x - x, o.y - y) < r) fxSmoke(o.x, o.y, 1); } else burst(x, y, '#6fc3ff', 40); rings.push({ x, y, r, col: '#9fdcff', life: 0.4 }); sfx('spray'); shake(6); }
 }
+const pumpPos = g => ({ x: g.pump && g.pump.x != null ? g.pump.x : g.lx, y: Math.min(600, CONFIG.LEADER_Y + g.cDepth + CONFIG.PUMP_GAP) });   
+function segDist(px, py, x0, y0, x1, y1) { const dx = x1 - x0, dy = y1 - y0, L = dx * dx + dy * dy || 1, t = clamp(((px - x0) * dx + (py - y0) * dy) / L, 0, 1); return Math.hypot(px - x0 - t * dx, py - y0 - t * dy); }
+function updatePump(g, dt) {   
+  const P = g.pump, C = CONFIG; if (!P) return;
+  if (P.x == null) P.x = g.lx;
+  P.x += (g.lx - P.x) * Math.min(1, dt * 6);
+  if (g.over) { P.on = false; return; }
+  const o = pumpPos(g);
+  const pick = () => { let best = null, bd = 1e9;
+    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && e.y < C.LEADER_Y) { const d = Math.hypot(e.x - o.x, e.y - o.y); if (d < bd && d < C.PUMP_RANGE) { bd = d; best = e; } }
+    if (!best && g.boss && g.boss.hp > 0 && g.boss.y > 0) best = g.boss; return best; };
+  if (!P.on) {
+    P.cd -= dt; if (P.cd > 0) return;
+    const t = pick(); if (!t) { P.cd = 0.2; return; }
+    P.on = true; P.spray = pumpDur(P.dur); P.t = t; P.ax = o.x; P.ay = o.y - 150; P.acc = 0;   
+    if (!SIM) sfx('spray');
+  }
+  P.spray -= dt; if (P.spray <= 0) { P.on = false; P.cd = C.PUMP_CD; return; }
+  if (!P.t || P.t.hp <= 0 || (P.t !== g.boss && P.t.y > C.LEADER_Y - 10)) P.t = pick() || (P.t && P.t.hp > 0 && P.t.y <= C.LEADER_Y - 10 ? P.t : null);   
+  if (P.t) { const dx = P.t.x - P.ax, dy = P.t.y - P.ay, d = Math.hypot(dx, dy), v = (C.PUMP_TRACK + C.PUMP_TRACK_UP * P.track) * dt;
+    if (d <= v) { P.ax = P.t.x; P.ay = P.t.y; } else { P.ax += dx / d * v; P.ay += dy / d * v; } }
+  const ex = P.ax - o.x, ey = P.ay - o.y, el = Math.hypot(ex, ey);
+  if (el > C.PUMP_RANGE) { P.ax = o.x + ex / el * C.PUMP_RANGE; P.ay = o.y + ey / el * C.PUMP_RANGE; }
+  P.ay = Math.min(P.ay, o.y - 70);   
+  P.acc += dt;
+  if (P.acc >= 0.1) {   
+    const d = C.PUMP_DPS * g.power * (1 + 0.3 * P.pow) * P.acc; P.acc = 0;
+    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && segDist(e.x, e.y, o.x, o.y - 10, P.ax, P.ay) < C.PUMP_W / 2 + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }
+    const B = g.boss; if (B && B.hp > 0 && segDist(B.x, B.y, o.x, o.y - 10, P.ax, P.ay) < C.PUMP_W / 2 + B.r) hurt(g, B, d);
+  }
+  if (!SIM) { if (R3.on) { fxSplash(P.ax, P.ay, 2); if (Math.random() < 0.15) fxSteam(P.ax, P.ay, 1); } else if (Math.random() < 0.5) burst(P.ax, P.ay, '#9fdcff', 2); }
+}
 function updateSpecials(g, dt) {
   const C = CONFIG;
+  updatePump(g, dt);
   if (g.lvGuard && g.guardHp < guardMax(g.lvGuard)) { g.guardT -= dt; if (g.guardT <= 0) { g.guardHp++; g.guardT = guardRegen(g.lvGuard); } }
   if (g.lvKami && !g.kamiReady) { g.kamiT -= dt; if (g.kamiT <= 0) g.kamiReady = true; }
   if (g.lvRanged) {
@@ -1091,7 +1139,8 @@ window.__sim = function (opt) {
 function autoBuy(m) {
   if (!SHOP.length) return;
   for (;;) {
-    const s = SHOP.slice().sort((a, b) => shopCost(a, m) - shopCost(b, m))[0];
+    const list = SHOP.filter(x => !x.garage).concat(m.hasPump ? PUMP_PERF : [{ key: 'hasPump', base: CONFIG.PUMP_PRICE, grow: 1 }]);   
+    const s = list.sort((a, b) => shopCost(a, m) - shopCost(b, m))[0];
     const cost = shopCost(s, m);
     if (m.coins < cost) return;
     m.coins -= cost; m[s.key]++;
@@ -1229,6 +1278,7 @@ resize();
 
 let introT = 0, cdLast = 4;
 const CD_LEN = 2.4;   
+let garageFrom = 'menu';   
 let scene = 'menu', game = null, paused = false, bgY = 0, resultInfo = null;
 function startRun() {
   init3D();
@@ -1257,10 +1307,12 @@ function btnHit(b, x, y) { return x >= b.x && x <= b.x + b.w && y >= b.y && y <=
 let buttons = [];
 const MUTE_BTN = { x: CONFIG.W - 40, y: 60, w: 32, h: 28 };
 function muteBtn() { MUTE_BTN.x = VB.r - 40; return MUTE_BTN; }   
-function shopBtn(i) { return i < 3 ? { x: 12 + i * 114, y: 440, w: 108, h: 92 } : { x: 12 + (i - 3) * 114, y: 540, w: 108, h: 92 }; }      
+function shopBtn(i) { return i < 3 ? { x: 12 + i * 114, y: 440, w: 108, h: 92 } : i === 3 ? { x: 12, y: 540, w: 108, h: 92 } : { x: 126, y: 540, w: 222, h: 92 }; }      
 const PLAY_BTN = { x: 70, y: 376, w: 220, h: 56 };
 function buy(i) {
-  const s = SHOP[i], cost = shopCost(s, meta);
+  const s = SHOP[i];
+  if (s.garage) { garageFrom = scene; scene = 'garage'; sfx('buy'); return; }   
+  const cost = shopCost(s, meta);
   if (meta.coins < cost) { sfx('no'); return; }
   meta.coins -= cost; meta[s.key]++; saveMeta(); sfx('buy');
   const b = shopBtn(i); burst(b.x + b.w / 2, b.y + 30, s.col, 16);
@@ -1279,6 +1331,7 @@ canvas.addEventListener('pointerdown', e => {
     if (y < 440) startRun();
     return;
   }
+  if (scene === 'garage') { for (const b of garageRects()) if (btnHit(b, x, y)) { garageTap(b); return; } return; }
   if (scene === 'result') { for (let i = 0; i < SHOP.length; i++) if (btnHit(shopBtn(i), x, y)) { buy(i); return; } for (const b of buttons) if (btnHit(b, x, y)) { b.fn(); return; } return; }
   if (scene === 'play') {
     if (paused) { paused = false; if (audio) audio.resume(); return; }
@@ -1439,6 +1492,11 @@ function drawEnemies(g) {
     ctx.fillStyle = '#1a1f33'; ctx.fillRect(B.x - 16, B.y + 6, 32, 6);
     txt(bossText(B), B.x, B.y + 24, 20, '#fff');
   }
+}
+function drawPump2D(g) {   
+  const P = g.pump; if (!P || g.over === 'fail') return; const o = pumpPos(g);
+  if (P.on) { ctx.strokeStyle = 'rgba(159,220,255,0.8)'; ctx.lineWidth = CONFIG.PUMP_W * 0.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(o.x, o.y - 10); ctx.lineTo(P.ax, P.ay); ctx.stroke(); ctx.lineCap = 'butt'; }
+  ctx.fillStyle = '#' + (PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0]).toString(16).padStart(6, '0'); rrect(o.x - 17, o.y - 26, 34, 52, 6); ctx.fill();
 }
 function drawCrowd(g) {
   for (const [k, lvk, col] of [['guard', 'lvGuard', '#ff5a4a'], ['kami', 'lvKami', '#ffc21a'], ['ranged', 'lvRanged', '#3fd46a']]) {   
@@ -1611,8 +1669,100 @@ function drawIcon(kind, cx, cy, sz) {
     drawCoin(cx, cy - sz * 0.12, sz * 0.3);
   }
 }
+
+const pumpPatCv = document.createElement('canvas'); pumpPatCv.width = 128; pumpPatCv.height = 64;
+function drawPumpSide(cx, cy, w, col, pat) {
+  const h = w * 0.42, x = cx - w / 2, y = cy - h / 2;
+  paintPump(pumpPatCv.getContext('2d'), 128, 64, col, pat);
+  ctx.fillStyle = '#2a2d34'; ctx.fillRect(x + w * 0.04, y + h * 0.78, w * 0.92, h * 0.1);                              
+  ctx.save(); rrect(x + w * 0.02, y + h * 0.28, w * 0.7, h * 0.56, w * 0.03); ctx.clip(); ctx.drawImage(pumpPatCv, x + w * 0.02, y + h * 0.28, w * 0.7, h * 0.56); ctx.restore();   
+  ctx.save(); rrect(x + w * 0.7, y + h * 0.36, w * 0.28, h * 0.48, w * 0.04); ctx.clip(); ctx.drawImage(pumpPatCv, x + w * 0.7, y + h * 0.36, w * 0.28, h * 0.48); ctx.restore();   
+  ctx.fillStyle = '#2a3a50'; rrect(x + w * 0.8, y + h * 0.42, w * 0.14, h * 0.17, w * 0.015); ctx.fill();                
+  ctx.fillStyle = '#d6dbe4'; rrect(x + w * 0.1, y + h * 0.12, w * 0.5, h * 0.16, h * 0.08); ctx.fill();                   
+  ctx.fillStyle = '#ff3030'; ctx.fillRect(x + w * 0.78, y + h * 0.28, w * 0.12, h * 0.08);                               
+  ctx.save(); ctx.translate(x + w * 0.44, y + h * 0.12); ctx.rotate(-0.35); ctx.fillStyle = '#ffd84a'; rrect(0, -h * 0.05, w * 0.3, h * 0.1, h * 0.04); ctx.fill(); ctx.restore();   
+  for (const fx of [0.2, 0.8]) { const wx0 = x + w * fx, wy0 = y + h * 0.88, r = h * 0.15;
+    ctx.fillStyle = '#15171c'; ctx.beginPath(); ctx.arc(wx0, wy0, r, 0, 6.28); ctx.fill(); ctx.fillStyle = '#9aa3b0'; ctx.beginPath(); ctx.arc(wx0, wy0, r * 0.45, 0, 6.28); ctx.fill(); }
+}
+function drawPumpCard(r) {   
+  const can = !meta.hasPump ? meta.coins >= CONFIG.PUMP_PRICE : PUMP_PERF.some(s => meta.coins >= shopCost(s, meta));
+  ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
+  ctx.strokeStyle = can ? '#ffd84a' : '#3a4260'; ctx.lineWidth = can ? 3 : 2; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
+  txt('PUMP TRUCK', r.x + r.w / 2, r.y + 12, 10, '#ffffff', 'center', '800');
+  drawPumpSide(r.x + 64, r.y + 50, 96, PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0], meta.pumpPat || 0);
+  const px = r.x + 124, pw = r.w - 134, py = r.y + r.h - 24;
+  if (!meta.hasPump) {
+    ctx.fillStyle = can ? '#10142a' : 'rgba(40,46,70,0.9)'; rrect(px, py, pw, 20, 10); ctx.fill();
+    if (can) { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 1.5; rrect(px, py, pw, 20, 10); ctx.stroke(); }
+    drawCoin(px + 12, py + 10, 6.5); txt(String(CONFIG.PUMP_PRICE), px + pw / 2 + 7, py + 11, 12, can ? '#ffd84a' : '#8890a8', 'center');
+  } else { ctx.fillStyle = '#ffd84a'; rrect(px, py, pw, 20, 10); ctx.fill(); txt('CUSTOM ▶', px + pw / 2, py + 11, 11, '#1a1f33', 'center', '800'); }
+}
+
+function garageRects() {
+  const out = [{ kind: 'back', x: 100, y: 572, w: 160, h: 44 }];
+  if (!meta.hasPump) { out.push({ kind: 'get', x: 90, y: 300, w: 180, h: 56 }); return out; }
+  PUMP_PERF.forEach((s, i) => out.push({ kind: 'perf', i, x: 12 + i * 114, y: 250, w: 108, h: 92 }));
+  PUMP_COLORS.forEach((c, i) => out.push({ kind: 'col', i, x: 18 + i * 56, y: 372, w: 52, h: 62 }));
+  PUMP_PATS.forEach((p, i) => out.push({ kind: 'pat', i, x: 12 + i * 85, y: 466, w: 79, h: 88 }));
+  return out;
+}
+function garageTap(b) {
+  const C = CONFIG, pay = c => { if (meta.coins < c) { sfx('no'); return false; } meta.coins -= c; sfx('buy'); burst(b.x + b.w / 2, b.y + b.h / 2, '#ffd84a', 16); return true; };
+  if (b.kind === 'back') { scene = garageFrom || 'menu'; return; }
+  if (b.kind === 'get') { if (pay(C.PUMP_PRICE)) meta.hasPump = 1; }
+  else if (b.kind === 'perf') { const s = PUMP_PERF[b.i]; if (pay(shopCost(s, meta))) meta[s.key]++; }
+  else if (b.kind === 'col') { const own = (meta.pumpCols || [0]).includes(b.i); if (own || pay(C.PUMP_COL_PRICE)) { if (!own) meta.pumpCols = (meta.pumpCols || [0]).concat(b.i); meta.pumpColor = b.i; if (own) sfx('buy'); } }
+  else if (b.kind === 'pat') { const own = (meta.pumpPats || [0]).includes(b.i); if (own || pay(C.PUMP_PAT_PRICE)) { if (!own) meta.pumpPats = (meta.pumpPats || [0]).concat(b.i); meta.pumpPat = b.i; if (own) sfx('buy'); } }
+  saveMeta();
+}
+function pricePill(x, y, w, cost) {
+  const can = meta.coins >= cost;
+  ctx.fillStyle = can ? '#10142a' : 'rgba(40,46,70,0.9)'; rrect(x, y, w, 18, 9); ctx.fill();
+  if (can) { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 1.5; rrect(x, y, w, 18, 9); ctx.stroke(); }
+  drawCoin(x + 10, y + 9, 5.5); txt(String(cost), x + w / 2 + 6, y + 10, 11, can ? '#ffd84a' : '#8890a8', 'center');
+}
+function drawGarage() {
+  const C = CONFIG, col = PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0];
+  ctx.fillStyle = 'rgba(10,14,30,0.86)'; ctx.fillRect(VB.l, VB.t, VB.r - VB.l, VB.b - VB.t);
+  coinPill(VB.l + 10, 24, meta.coins);
+  txt('GARAGE', 180, 88, 26, '#fff', 'center', '800');
+  ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.beginPath(); ctx.ellipse(180, 222, 120, 12, 0, 0, 6.28); ctx.fill();
+  drawPumpSide(180, 180, 220, col, meta.pumpPat || 0);
+  for (const b of garageRects()) {
+    if (b.kind === 'back') { ctx.fillStyle = 'rgba(255,255,255,0.12)'; rrect(b.x, b.y, b.w, b.h, 12); ctx.fill(); txt('BACK', b.x + b.w / 2, b.y + b.h / 2 + 1, 18, '#fff', 'center', '800'); }
+    else if (b.kind === 'get') { const can = meta.coins >= C.PUMP_PRICE;
+      ctx.fillStyle = can ? '#ffd84a' : 'rgba(40,46,70,0.9)'; rrect(b.x, b.y, b.w, b.h, 14); ctx.fill();
+      drawCoin(b.x + 54, b.y + b.h / 2, 11); txt(String(C.PUMP_PRICE), b.x + b.w / 2 + 16, b.y + b.h / 2 + 1, 24, can ? '#1a1f33' : '#8890a8', 'center', '800'); }
+    else if (b.kind === 'perf') { const s = PUMP_PERF[b.i], lv = meta[s.key] || 0, cost = shopCost(s, meta), can = meta.coins >= cost;
+      ctx.fillStyle = 'rgba(20,26,50,0.92)'; rrect(b.x, b.y, b.w, b.h, 12); ctx.fill();
+      ctx.strokeStyle = can ? '#ffd84a' : '#3a4260'; ctx.lineWidth = can ? 3 : 2; rrect(b.x + 1, b.y + 1, b.w - 2, b.h - 2, 12); ctx.stroke();
+      txt(s.name, b.x + b.w / 2, b.y + 13, 10, '#fff', 'center', '800');
+      drawPerfIcon(b.i, b.x + b.w / 2, b.y + 36);
+      txt(s.eff(lv), b.x + b.w / 2, b.y + 56, 13, '#fff');
+      pricePill(b.x + 8, b.y + b.h - 22, b.w - 16, cost); }
+    else if (b.kind === 'col') { const own = (meta.pumpCols || [0]).includes(b.i), sel = meta.pumpColor === b.i, cx = b.x + b.w / 2;
+      ctx.fillStyle = '#' + PUMP_COLORS[b.i].toString(16).padStart(6, '0'); ctx.beginPath(); ctx.arc(cx, b.y + 22, 19, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = sel ? '#ffffff' : 'rgba(255,255,255,0.25)'; ctx.lineWidth = sel ? 4 : 1.5; ctx.beginPath(); ctx.arc(cx, b.y + 22, sel ? 23 : 19, 0, 6.28); ctx.stroke();
+      if (!own) pricePill(b.x + 2, b.y + 46, b.w - 4, C.PUMP_COL_PRICE); }
+    else if (b.kind === 'pat') { const own = (meta.pumpPats || [0]).includes(b.i), sel = (meta.pumpPat || 0) === b.i;
+      ctx.fillStyle = 'rgba(20,26,50,0.92)'; rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+      ctx.save(); rrect(b.x + 8, b.y + 8, b.w - 16, 36, 6); ctx.clip(); paintPump(pumpPatCv.getContext('2d'), 128, 64, PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0], b.i); ctx.drawImage(pumpPatCv, b.x + 8, b.y + 8, b.w - 16, 36); ctx.restore();
+      ctx.strokeStyle = sel ? '#ffffff' : '#3a4260'; ctx.lineWidth = sel ? 3 : 1.5; rrect(b.x + 1, b.y + 1, b.w - 2, b.h - 2, 10); ctx.stroke();
+      txt(PUMP_PATS[b.i], b.x + b.w / 2, b.y + 54, 9, '#fff', 'center', '800');
+      if (!own) pricePill(b.x + 6, b.y + b.h - 22, b.w - 12, C.PUMP_PAT_PRICE); }
+  }
+}
+function drawPerfIcon(i, cx, cy) {   
+  if (i === 0) { const r = 11; ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.moveTo(cx, cy - r * 1.5); ctx.bezierCurveTo(cx + r * 1.1, cy - r * 0.3, cx + r, cy + r, cx, cy + r); ctx.bezierCurveTo(cx - r, cy + r, cx - r * 1.1, cy - r * 0.3, cx, cy - r * 1.5); ctx.fill();
+    ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx + 14, cy - 6); ctx.lineTo(cx + 18, cy + 2); ctx.lineTo(cx + 13, cy + 2); ctx.lineTo(cx + 17, cy + 10); ctx.stroke(); }
+  else if (i === 1) { ctx.fillStyle = '#7fd0ff'; ctx.beginPath(); ctx.moveTo(cx - 10, cy - 12); ctx.lineTo(cx + 10, cy - 12); ctx.lineTo(cx, cy); ctx.lineTo(cx + 10, cy + 12); ctx.lineTo(cx - 10, cy + 12); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillRect(cx - 12, cy - 14, 24, 3); ctx.fillRect(cx - 12, cy + 11, 24, 3); }
+  else { ctx.strokeStyle = '#ff8a5a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(cx, cy, 11, 0, 6.28); ctx.stroke(); ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 6.28); ctx.stroke();
+    ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(cx - 20, cy + 10); ctx.quadraticCurveTo(cx - 18, cy - 6, cx - 8, cy - 4); ctx.stroke(); }
+}
 function drawShop() {   
   SHOP.forEach((s, i) => {
+    if (s.garage) { drawPumpCard(shopBtn(i)); return; }
     const r = shopBtn(i), lv = meta[s.key], cost = shopCost(s, meta), can = meta.coins >= cost;
     ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
     
@@ -2019,13 +2169,64 @@ function init3D() {
       ranged: mkSpec(0x3fd46a, gr => { const c = new T.Mesh(new T.CylinderGeometry(0.08, 0.1, 0.7, 8), cannonMat); c.rotation.x = Math.PI / 2 - 0.5; c.position.set(0.18, 0.78, -0.12); gr.add(c); }),
     };
     const missiles = pool(() => new T.Mesh(new T.SphereGeometry(0.2, 10, 8), B(0x7fe8ff)));
+    
+    const pumpCv = document.createElement('canvas'); pumpCv.width = 128; pumpCv.height = 64;
+    const pumpTex = new T.CanvasTexture(pumpCv), pumpMat = M(0xffffff, { map: pumpTex });
+    const pump = new T.Group();
+    const pBody = new T.Mesh(new T.BoxGeometry(1.7, 1.0, 2.6), pumpMat); pBody.position.set(0, 0.85, 0.25); pump.add(pBody);
+    const pCab = new T.Mesh(new T.BoxGeometry(1.6, 0.9, 0.9), pumpMat); pCab.position.set(0, 0.8, -1.4); pump.add(pCab);
+    const pGlass = new T.Mesh(new T.BoxGeometry(1.4, 0.38, 0.05), M(0x2a3a50)); pGlass.position.set(0, 1.0, -1.86); pump.add(pGlass);
+    const pTank = new T.Mesh(new T.CylinderGeometry(0.5, 0.5, 1.7, 14), M(0xd6dbe4)); pTank.rotation.x = Math.PI / 2; pTank.position.set(0, 1.55, 0.45); pump.add(pTank);
+    const pChassis = new T.Mesh(new T.BoxGeometry(1.5, 0.22, 3.6), M(0x2a2d34)); pChassis.position.set(0, 0.32, -0.3); pump.add(pChassis);
+    for (const wz2 of [-1.3, 0.9]) for (const wx6 of [-0.78, 0.78]) { const wh = new T.Mesh(new T.CylinderGeometry(0.32, 0.32, 0.24, 12), M(0x15171c)); wh.rotation.z = Math.PI / 2; wh.position.set(wx6, 0.32, wz2); pump.add(wh); }
+    const pLight = new T.Mesh(new T.BoxGeometry(0.7, 0.14, 0.2), B(0xff3030)); pLight.position.set(0, 1.32, -1.4); pump.add(pLight);
+    const pTurret = new T.Group(); pTurret.position.set(0, 2.1, 0.1); pump.add(pTurret);
+    const pBase = new T.Mesh(new T.CylinderGeometry(0.32, 0.38, 0.3, 12), M(0xc8ccd4)); pTurret.add(pBase);
+    const pNoz = new T.Mesh(new T.CylinderGeometry(0.11, 0.16, 1.1, 10), M(0xffd84a)); pNoz.rotation.x = -Math.PI / 2 + 0.25; pNoz.position.set(0, 0.2, -0.5); pTurret.add(pNoz);
+    pump.traverse(o => { if (o.isMesh) o.castShadow = true; }); pump.visible = false; scene3.add(pump);
+    const beamMat = new T.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.55, depthWrite: false });
+    const beam = new T.Mesh(new T.CylinderGeometry(1, 1, 1, 12, 1, true), beamMat); beam.visible = false; beam.renderOrder = 3; scene3.add(beam);
+    const beamCore = new T.Mesh(new T.CylinderGeometry(1, 1, 1, 10, 1, true), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false })); beamCore.visible = false; beamCore.renderOrder = 4; scene3.add(beamCore);
     const bossAura = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xffb870, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }));
     bossAura.renderOrder = 4; bossAura.visible = false; scene3.add(bossAura);   
-    Object.assign(R3, { bossAura, col2: new T.Color(), bosses, hydrants, tanks, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat });
+    Object.assign(R3, { bossAura, col2: new T.Color(), bosses, hydrants, tanks, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat, pump, pumpCv, pumpTex, pTurret, beam, beamCore });
     Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody, bossFlames,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
   } catch (e) { R3.on = false; R3.err = String(e); }
+}
+
+function paintPump(c, w, h, col, pat) {
+  const css = '#' + col.toString(16).padStart(6, '0'), dark = col === 0x2a2d34;
+  c.fillStyle = css; c.fillRect(0, 0, w, h);
+  const mk = dark ? '#ffd84a' : col === 0xf2c21a ? '#d8262a' : '#ffffff';
+  c.fillStyle = mk; c.strokeStyle = mk;
+  if (pat === 1) { c.fillRect(0, h * 0.55, w, h * 0.12); c.fillRect(0, h * 0.74, w, h * 0.06); }
+  else if (pat === 2) { const st = (x, y, r) => { c.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr0 = k % 2 ? r * 0.45 : r; c.lineTo(x + Math.cos(a) * rr0, y + Math.sin(a) * rr0); } c.closePath(); c.fill(); };
+    for (const [x, y, r] of [[0.15, 0.35, 0.16], [0.42, 0.7, 0.12], [0.62, 0.3, 0.14], [0.86, 0.66, 0.15]]) st(x * w, y * h, r * h); }
+  else if (pat === 3) { c.fillStyle = '#ff8a1a'; c.beginPath(); c.moveTo(0, h);
+    for (let k = 0; k <= 6; k++) { const x = k * w / 6; c.lineTo(x - w / 24, h * (k % 2 ? 0.35 : 0.55)); c.lineTo(x + w / 24, h * 0.8); }
+    c.lineTo(w, h); c.closePath(); c.fill(); c.fillStyle = '#ffd84a'; c.fillRect(0, h * 0.86, w, h * 0.14); }
+}
+function renderPump3D(g, R) {
+  const P = g.pump, on = !!P && !(g.over === 'fail');
+  R.pump.visible = on; R.beam.visible = R.beamCore.visible = false; if (!on) return;
+  const key = meta.pumpColor + '/' + meta.pumpPat;
+  if (R.pumpKey !== key) { R.pumpKey = key; paintPump(R.pumpCv.getContext('2d'), 128, 64, PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0], meta.pumpPat || 0); R.pumpTex.needsUpdate = true; }
+  const o = pumpPos(g), x = wx(o.x), z = wz(o.y), bob = Math.abs(Math.sin(performance.now() / 120)) * 0.04;
+  R.pump.position.set(x, bob, z); R.pump.scale.set(0.95, 0.95, 0.95);
+  const tx = P.on ? wx(P.ax) - x : 0, tz = P.on ? wz(P.ay) - z : -1;
+  R.pTurret.rotation.y = Math.atan2(-tx, -tz);
+  if (!P.on) return;
+  
+  const sx = x + Math.sin(R.pTurret.rotation.y) * -0.6, sz = z + Math.cos(R.pTurret.rotation.y) * -0.6, sy = 2.3;
+  const ex = wx(P.ax), ez = wz(P.ay), ey = 0.3;
+  const v = R.v.set(ex - sx, ey - sy, ez - sz), len = v.length(); v.normalize();
+  const wob = 1 + 0.12 * Math.sin(performance.now() / 40);
+  for (const [m, rad] of [[R.beam, 0.32 * wob], [R.beamCore, 0.14]]) {
+    m.visible = true; m.position.set((sx + ex) / 2, (sy + ey) / 2, (sz + ez) / 2);
+    m.quaternion.setFromUnitVectors(R.up || (R.up = new R.T.Vector3(0, 1, 0)), v); m.scale.set(rad, len, rad);
+  }
 }
 function resize3D() {
   if (!R3.on) return;
@@ -2064,7 +2265,7 @@ function ahead3D(g) {
 }
 
 function idleGame() {
-  const key = meta.level + '/' + meta.lvArmy;
+  const key = meta.level + '/' + meta.lvArmy + '/' + meta.hasPump;   
   if (!R3.idle || R3.idleKey !== key) {
     const keep = rng;
     R3.idle = newRun(meta.level, meta, 1); R3.idleKey = key;
@@ -2216,6 +2417,7 @@ function render3D(g, sx, sy) {
   }
   for (const m of g.missiles || []) { const b = R.missiles.get(); b.position.set(wx(m.x), 0.8, wz(m.y)); }
   R.missiles.end();
+  renderPump3D(g, R);
   d.rotation.set(0, 0, 0);
   R.unitBody.count = R.unitHead.count = R.unitBrim.count = R.unitStripe.count = R.unitTank.count = n;
   for (const im of [R.unitBody, R.unitHead, R.unitBrim, R.unitStripe, R.unitTank]) im.instanceMatrix.needsUpdate = true;
@@ -2363,6 +2565,7 @@ function frame(now) {
   if (in3D && scene !== 'play') { const ig = idleGame(); ig.t += dt; bgY += 20 * dt; render3D(ig, 0, 0); }
   if (scene === 'menu') { drawMenu(); drawFx(dt); }
   else if (scene === 'result') drawResult();
+  else if (scene === 'garage') { drawGarage(); drawFx(dt); }
   else if (scene === 'play') {
     const g = game;
     if (!paused) {
@@ -2378,7 +2581,7 @@ function frame(now) {
       }
     }
     if (in3D) { render3D(g, sx, sy); drawLabels3D(g); }
-    else { drawRoad(); drawRows(g, paused ? 0 : dt); drawWalls(g); drawEnemies(g); drawBullets(g); drawCrowd(g); }
+    else { drawRoad(); drawRows(g, paused ? 0 : dt); drawWalls(g); drawEnemies(g); drawBullets(g); drawCrowd(g); drawPump2D(g); }
     drawFx(paused ? 0 : dt); drawHud(g);
     if (g.cutT > 0) drawCutIn(g);
     if (introT > 0) {   

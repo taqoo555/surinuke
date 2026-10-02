@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v81';
+const VERSION = 'v82';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -109,12 +109,13 @@ const CONFIG = {
   GATE_OBST_HP: 0.7,              
   ARMY_W: 120,                    
   
-  ROW_W: [0.55, 0.65, 1.0, 1.0, 1.0, 1.0],   
+  ROW_W: [0.45, 0.70, 1.0, 1.0, 1.0, 1.0],   
   HARD_RATE: 0.5, HARD_ROWS: 1,   
   TUTOR_RED: [30, 8],             
   GUARD_GAP: 30,                  
   OBST_FRONT: 16,                 
   LANE_BLUE: 0.3,                 
+  GUARD_BLUE: 1.5,                
   GUARD_EARLY: 0.3,               
   GUARD_HP: 0.8,                     
   FINAL_ROWS: 3,                  
@@ -429,7 +430,7 @@ function freeRow(g, c) {
   function freeRowAt(r) {
   if (r < W[0]) return { parts: [red(1.2)], cuts: [] };                                            
   if (r < W[1]) {                                                                                   
-    const k = ri(0, 2), gb = rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1.3, true);
+    const k = ri(0, 2), gb = rng() < 0.4 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1.3 * C.GUARD_BLUE, true);   
     if (k === 1) return { parts: [red(1.0), gb, red(1.0)], cuts: [fixed(L1), fixed(L2)], blueX: laneX(1), guard: 1 };
     return { parts: k === 0 ? [gb, red(1.2)] : [red(1.2), gb], cuts: [fixed(k === 0 ? L1 : L2)], blueX: laneX(k), guard: k };
   }

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v86';
+const VERSION = 'v87';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -656,8 +656,10 @@ function sprayDrop(o, P) {
   const C = CONFIG, sp = pumpSpread(P, Math.hypot(P.ax - o.x, P.ay - o.y)), a0 = rr2(0, 6.28), rr0 = sp.r * Math.sqrt(Math.random());
   let tx = P.ax + Math.cos(a0) * rr0, ty = P.ay + Math.sin(a0) * rr0 * 0.7;   
   if (Math.random() < Math.min(0.25, sp.over / 600)) {    const k = rr2(0.55, 0.9); tx = o.x + (tx - o.x) * k; ty = o.y + (ty - o.y) * k; }   
-  const a = pumpArc(o, tx, ty);
-  fxAdd({ x: a.ox, y: a.oy, h: a.h0, vx: a.vx, vy: a.vy, vh: a.vh, g: C.PUMP_G, life: 0, max: a.T * rr2(0.95, 1.05), s0: rr2(0.3, 0.4), s1: 0.1, col: 0xbfe8ff, add: true, air: true });
+  
+  const A = pumpArc(o, P.ax, P.ay), jet = Math.min(1, pumpReach(P.area) / Math.max(1, A.dist)); if (jet >= 1) return;
+  const tau = jet * A.T, x = A.ox + A.vx * tau, y = A.oy + A.vy * tau, h = A.h0 + A.vh * tau - 0.5 * C.PUMP_G * tau * tau, Tr = Math.max(0.15, (A.T - tau) * rr2(0.9, 1.1));
+  fxAdd({ x, y, h, vx: (tx - x) / Tr, vy: (ty - y) / Tr, vh: (0.15 - h + 0.5 * C.PUMP_G * Tr * Tr) / Tr, g: C.PUMP_G, life: 0, max: Tr, s0: rr2(0.22, 0.32), s1: 0.12, col: 0x8fd0ff, add: true, air: true });
 }
 
 function pumpAim(g, o, t) {
@@ -2220,9 +2222,16 @@ function init3D() {
     const beam = new T.InstancedMesh(new T.CylinderGeometry(1, 1, 1, 8, 1, true), new T.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.55, depthWrite: false }), 14);
     const beamCore = new T.InstancedMesh(new T.CylinderGeometry(1, 1, 1, 6, 1, true), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false }), 14);
     for (const m of [beam, beamCore]) { m.visible = false; m.frustumCulled = false; scene3.add(m); } beam.renderOrder = 3; beamCore.renderOrder = 4;
+    
+    const TUBE_S = 24, TUBE_R = 10, tubeGeo = new T.BufferGeometry();
+    const tubePos = new Float32Array((TUBE_S + 1) * TUBE_R * 3), tubeCol = new Float32Array((TUBE_S + 1) * TUBE_R * 3), tubeIdx = [];
+    for (let i = 0; i < TUBE_S; i++) for (let j = 0; j < TUBE_R; j++) { const a = i * TUBE_R + j, b = i * TUBE_R + (j + 1) % TUBE_R, c = a + TUBE_R, d2 = b + TUBE_R; tubeIdx.push(a, c, b, b, c, d2); }
+    tubeGeo.setIndex(tubeIdx); tubeGeo.setAttribute('position', new T.BufferAttribute(tubePos, 3)); tubeGeo.setAttribute('color', new T.BufferAttribute(tubeCol, 3));
+    const tube = new T.Mesh(tubeGeo, new T.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.88, depthWrite: false, side: T.DoubleSide }));
+    tube.frustumCulled = false; tube.visible = false; tube.renderOrder = 3; scene3.add(tube);
     const bossAura = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xffb870, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }));
     bossAura.renderOrder = 4; bossAura.visible = false; scene3.add(bossAura);   
-    Object.assign(R3, { bossAura, col2: new T.Color(), bosses, hydrants, tanks, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat, pump, pumpCv, pumpTex, pTurret, beam, beamCore });
+    Object.assign(R3, { bossAura, col2: new T.Color(), bosses, hydrants, tanks, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat, pump, pumpCv, pumpTex, pTurret, beam, beamCore, tube, TUBE_S, TUBE_R });
     Object.assign(R3, { on: true, T, renderer, scene3, cam, tex, postIM, lots, flames, clouds, citySet, bridgeSet, railPostIM, towers, islands, unitBrim, unitStripe, unitTank, panels, frames, tires, walls, unitBody, unitHead, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM, puffIM, sparkIM, haloIM, boss, bossBody, bossFlames,
                         matRed, matBlue, matRedF, matBlueF, matDim, dummy: new T.Object3D(), v: new T.Vector3(), col: new T.Color() });
     resize3D();
@@ -2243,7 +2252,7 @@ function paintPump(c, w, h, col, pat) {
 }
 function renderPump3D(g, R) {
   const P = g.pump, on = !!P && !(g.over === 'fail');
-  R.pump.visible = on; R.beam.visible = R.beamCore.visible = false; if (!on) return;
+  R.pump.visible = on; R.beam.visible = R.beamCore.visible = R.tube.visible = false; if (!on) return;
   const key = meta.pumpColor + '/' + meta.pumpPat;
   if (R.pumpKey !== key) { R.pumpKey = key; paintPump(R.pumpCv.getContext('2d'), 128, 64, PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0], meta.pumpPat || 0); R.pumpTex.needsUpdate = true; }
   const S = CONFIG.PUMP_SCALE, o = pumpPos(g), x = wx(o.x), z = wz(o.y), bob = g.halt ? 0 : Math.abs(Math.sin(performance.now() / 120)) * 0.03;
@@ -2252,21 +2261,23 @@ function renderPump3D(g, R) {
   R.pTurret.rotation.y = Math.atan2(-tx, -tz);
   if (!P.on) return;
   
-  const A = pumpArc(o, P.ax, P.ay), d = R.dummy, N = 8, up = R.up || (R.up = new R.T.Vector3(0, 1, 0)), wob = 1 + 0.1 * Math.sin(performance.now() / 40);
-  const jet = Math.min(1, pumpReach(P.area) / Math.max(1, A.dist));
+  const A = pumpArc(o, P.ax, P.ay), jet = Math.min(1, pumpReach(P.area) / Math.max(1, A.dist)), NS = R.TUBE_S, NR = R.TUBE_R;
   const at = tt => { const tau = tt * A.T; return [wx(A.ox + A.vx * tau), A.h0 + A.vh * tau - 0.5 * CONFIG.PUMP_G * tau * tau, wz(A.oy + A.vy * tau)]; };
-  let a = at(0);
-  for (let k = 0; k < 14; k++) {
-    if (k >= N) { d.scale.set(0, 0, 0); d.updateMatrix(); R.beam.setMatrixAt(k, d.matrix); R.beamCore.setMatrixAt(k, d.matrix); continue; }
-    const b = at(jet * (k + 1) / N), v = R.v.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = v.length() * 1.15; v.normalize();
-    d.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); d.quaternion.setFromUnitVectors(up, v);
-    const r0 = 0.2 * wob * (1 - 0.4 * k / N);
-    d.scale.set(r0, L, r0); d.updateMatrix(); R.beam.setMatrixAt(k, d.matrix);
-    d.scale.set(r0 * 0.45, L, r0 * 0.45); d.updateMatrix(); R.beamCore.setMatrixAt(k, d.matrix);
-    a = b;
+  const pos = R.tube.geometry.attributes.position.array, col = R.tube.geometry.attributes.color.array, now = performance.now();
+  for (let i = 0; i <= NS; i++) {
+    const u = i / NS, c = at(jet * u), c2 = at(jet * Math.min(1, u + 0.02) + 1e-4), c1 = at(Math.max(0, jet * u - 0.02));
+    let tx = c2[0] - c1[0], ty = c2[1] - c1[1], tz = c2[2] - c1[2]; const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+    let nx = -tz, nz = tx; const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;   
+    const bx = -ty * nz, by = tx * nz - tz * nx, bz = ty * nx;                        
+    const r = (0.26 + 0.035 * Math.sin(now / 45 + u * 9)) * (1 - 0.3 * u) * (jet < 1 ? Math.min(1, (1 - u) * 6 + 0.35) : 1);
+    for (let j = 0; j < NR; j++) {
+      const th = j / NR * Math.PI * 2, cs = Math.cos(th), sn = Math.sin(th), k = (i * NR + j) * 3;
+      pos[k] = c[0] + r * (cs * nx + sn * bx); pos[k + 1] = c[1] + r * (sn * by); pos[k + 2] = c[2] + r * (cs * nz + sn * bz);
+      const lit = 0.55 + 0.45 * Math.max(0, sn);   
+      col[k] = 0.45 + 0.55 * lit; col[k + 1] = 0.75 + 0.25 * lit; col[k + 2] = 1;
+    }
   }
-  d.quaternion.set(0, 0, 0, 1); d.rotation.set(0, 0, 0);
-  for (const m of [R.beam, R.beamCore]) { m.visible = true; m.instanceMatrix.needsUpdate = true; }
+  R.tube.geometry.attributes.position.needsUpdate = true; R.tube.geometry.attributes.color.needsUpdate = true; R.tube.visible = true;
 }
 function resize3D() {
   if (!R3.on) return;

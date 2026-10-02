@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v88';
+const VERSION = 'v89';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1454,7 +1454,7 @@ function drawRows(g, dt) {
       if (sl.type === 'empty') continue;
       if (sl.type === 'tire') { drawTire(g, sl, cx, row.y); continue; }
       if (row.done) continue;   
-      drawGateSide(z.x0, z.x1, row.y, sl, gateLocked(sl), dt);
+      drawGateSide(z.x0, z.x1, row.y, sl, false, dt);
     }
   }
 }
@@ -2418,7 +2418,7 @@ function render3D(g, sx, sy) {
       
       const sink = row.done ? 1 - (g.t - (row.goneT || 0)) / 0.15 : 1;
       if (sink <= 0) continue;
-      const taken = gateLocked(sl), H = 2.3 * sink;   
+      const taken = false, H = 2.3 * sink;   
       const pn = R.panels.get(); pn.material = taken ? R.matDim : sl.good ? R.matBlue : R.matRed;
       pn.position.set(cx, H / 2, z); pn.scale.set(Math.max(0.05, w - 0.12), H, 0.08);
       const fm = sl.good ? R.matBlueF : R.matRedF;
@@ -2594,7 +2594,7 @@ function drawLabels3D(g) {
       const [px, py, k] = P3(cx, row.y, 1.15), [ax] = P3(s.x0, row.y, 1.15), [bx] = P3(s.x1, row.y, 1.15);
       const fs = clamp((bx - ax) * 0.42, 9, 24 * k);
       if (sl.type === 'div') { txt('÷2', px, py, fs, '#fff'); continue; }
-      txt(gateLabel(sl), px, py, sl.hitT > 0 ? fs * 1.12 : fs, gateLocked(sl) ? 'rgba(255,255,255,0.35)' : '#fff');
+      txt(gateLabel(sl), px, py, sl.hitT > 0 ? fs * 1.12 : fs, '#fff');
     }
   }
   if (g.lvGuard && !g.over) {   

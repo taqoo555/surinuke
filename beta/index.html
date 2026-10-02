@@ -136,7 +136,8 @@ const CONFIG = {
   
   
   PUMP_Y: 628, PUMP_SCALE: 0.7, PUMP_ARC: 4.5, PUMP_SPLASH: 30,
-  PUMP_CD: 3.5, PUMP_DUR: 1.6, PUMP_DPS: 6, PUMP_RANGE: 430, PUMP_TRACK: 140, PUMP_TRACK_UP: 50,
+  
+  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.0, PUMP_DPS: 6, PUMP_RANGE: 430, PUMP_TRACK: 220,
   PUMP_PRICE: 300, PUMP_COL_PRICE: 50, PUMP_PAT_PRICE: 80,
   SPECIAL_GAP: 34,                
   SPECIAL_FRONT: 18,              
@@ -166,7 +167,7 @@ const SAVE_KEY = 'wars_meta_v24';
 const OLD_KEYS = ['surinuke_meta'];   
 let saveOK = false;
 function defaultMeta() { return { coins: 0, level: 1, lvRate: 0, lvDmg: 0, lvIncome: 0, lvArmy: 0, lvGuard: 0, lvKami: 0, lvRanged: 0,
-  hasPump: 0, lvPumpPow: 0, lvPumpDur: 0, lvPumpTrack: 0, pumpColor: 0, pumpPat: 0, pumpCols: [0], pumpPats: [0] }; }   
+  hasPump: 0, lvPumpPow: 0, lvPumpRate: 0, lvPumpArea: 0, pumpColor: 0, pumpPat: 0, pumpCols: [0], pumpPats: [0] }; }   
 let meta = defaultMeta();
 function loadMeta() {
   try {
@@ -210,12 +211,13 @@ const PUMP_CARD = { key: 'pump', icon: 'pump', name: 'PUMP TRUCK', garage: true,
 const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[2], SHOP_V24[3], PUMP_CARD];
 const PUMP_PERF = [
   { key: 'lvPumpPow',   name: 'POWER',      base: 80, grow: 1.5, eff: lv => String(Math.round(CONFIG.TIRE_SHOW * CONFIG.PUMP_DPS * (1 + 0.3 * lv))) + '/s' },
-  { key: 'lvPumpDur',   name: 'SPRAY TIME', base: 80, grow: 1.5, eff: lv => pumpDur(lv).toFixed(1) + 's' },
-  { key: 'lvPumpTrack', name: 'TRACKING',   base: 80, grow: 1.5, eff: lv => 'LV ' + (lv + 1) },
+  { key: 'lvPumpRate',  name: 'FREQUENCY',  base: 80, grow: 1.5, eff: lv => pumpCd(lv).toFixed(1) + 's' },
+  { key: 'lvPumpArea',  name: 'RANGE',      base: 80, grow: 1.5, eff: lv => String(pumpSplash(lv)) },
 ];
 const PUMP_COLORS = [0xd8262a, 0x2f7bd8, 0xf2c21a, 0xff7ab0, 0x3fb85a, 0x2a2d34];
 const PUMP_PATS = ['NONE', 'STRIPES', 'STARS', 'FLAMES'];
-const pumpDur = lv => CONFIG.PUMP_DUR + 0.4 * lv;
+const pumpCd = lv => Math.max(CONFIG.PUMP_CD_MIN, CONFIG.PUMP_CD * Math.pow(CONFIG.PUMP_CD_DOWN, lv));   
+const pumpSplash = lv => CONFIG.PUMP_SPLASH + CONFIG.PUMP_SPLASH_UP * lv;                          
 
 function powerOf(m) { const C = CONFIG; return Math.round(10 * (1 + C.UP_DMG * m.lvDmg) * (1 + C.UP_RATE * m.lvRate) * (C.START_UNITS + C.UP_ARMY * m.lvArmy)); }
 
@@ -240,7 +242,7 @@ function newRun(level, m, seed) {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
     t: 0, over: null,
     lvGuard: 0, lvKami: 0, lvRanged: 0,   
-    pump: m.hasPump ? { pow: m.lvPumpPow || 0, dur: m.lvPumpDur || 0, track: m.lvPumpTrack || 0, cd: 1.5, spray: 0, ax: 180, ay: 300, on: false, x: null, acc: 0, t: null } : null,
+    pump: m.hasPump ? { pow: m.lvPumpPow || 0, rate: m.lvPumpRate || 0, area: m.lvPumpArea || 0, cd: 1.5, spray: 0, ax: 180, ay: 300, on: false, x: null, acc: 0, t: null } : null,
     guardHp: m.lvGuard ? guardMax(m.lvGuard) : 0, guardT: 0, kamiReady: !!m.lvKami, kamiT: 0, rangedT: 1, missiles: [],
     N: C.START_UNITS + C.UP_ARMY * m.lvArmy,   
     power: 1 + C.UP_DMG * m.lvDmg, rateMul: 1 + C.UP_RATE * m.lvRate, income: 1 + C.UP_INCOME * m.lvIncome,
@@ -652,12 +654,12 @@ function updatePump(g, dt) {
   if (!P.on) {
     P.cd -= dt; if (P.cd > 0) return;
     const t = pick(); if (!t) { P.cd = 0.2; return; }
-    P.on = true; P.spray = pumpDur(P.dur); P.t = t; P.ax = o.x; P.ay = o.y - 150; P.acc = 0;   
+    P.on = true; P.spray = C.PUMP_DUR; P.t = t; P.ax = o.x; P.ay = o.y - 150; P.acc = 0;   
     if (!SIM) sfx('spray');
   }
-  P.spray -= dt; if (P.spray <= 0) { P.on = false; P.cd = C.PUMP_CD; return; }
+  P.spray -= dt; if (P.spray <= 0) { P.on = false; P.cd = pumpCd(P.rate); return; }
   if (!P.t || P.t.hp <= 0 || (P.t !== g.boss && P.t.y > C.LEADER_Y - 10)) P.t = pick() || (P.t && P.t.hp > 0 && P.t.y <= C.LEADER_Y - 10 ? P.t : null);   
-  if (P.t) { const dx = P.t.x - P.ax, dy = P.t.y - P.ay, d = Math.hypot(dx, dy), v = (C.PUMP_TRACK + C.PUMP_TRACK_UP * P.track) * dt;
+  if (P.t) { const dx = P.t.x - P.ax, dy = P.t.y - P.ay, d = Math.hypot(dx, dy), v = C.PUMP_TRACK * dt;
     if (d <= v) { P.ax = P.t.x; P.ay = P.t.y; } else { P.ax += dx / d * v; P.ay += dy / d * v; } }
   const ex = P.ax - o.x, ey = P.ay - o.y, el = Math.hypot(ex, ey);
   if (el > C.PUMP_RANGE) { P.ax = o.x + ex / el * C.PUMP_RANGE; P.ay = o.y + ey / el * C.PUMP_RANGE; }
@@ -665,10 +667,10 @@ function updatePump(g, dt) {
   P.acc += dt;
   if (P.acc >= 0.1) {   
     const d = C.PUMP_DPS * g.power * (1 + 0.3 * P.pow) * P.acc; P.acc = 0;
-    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && Math.hypot(e.x - P.ax, e.y - P.ay) < C.PUMP_SPLASH + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }   
-    const B = g.boss; if (B && B.hp > 0 && Math.hypot(B.x - P.ax, B.y - P.ay) < C.PUMP_SPLASH + B.r) hurt(g, B, d);
+    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && Math.hypot(e.x - P.ax, e.y - P.ay) < pumpSplash(P.area) + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }   
+    const B = g.boss; if (B && B.hp > 0 && Math.hypot(B.x - P.ax, B.y - P.ay) < pumpSplash(P.area) + B.r) hurt(g, B, d);
   }
-  if (!SIM && Math.random() < 0.5) { if (R3.on) fxSplash(P.ax, P.ay, 1); else burst(P.ax, P.ay, '#9fdcff', 2); }
+  if (!SIM && Math.random() < 0.5) { if (R3.on) fxSplash(P.ax + rr2(-1, 1) * pumpSplash(P.area) * 0.6, P.ay + rr2(-1, 1) * pumpSplash(P.area) * 0.4, 1 + (P.area >> 1)); else burst(P.ax, P.ay, '#9fdcff', 2); }
 }
 function updateSpecials(g, dt) {
   const C = CONFIG;
@@ -1762,8 +1764,8 @@ function drawPerfIcon(i, cx, cy) {
     ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx + 14, cy - 6); ctx.lineTo(cx + 18, cy + 2); ctx.lineTo(cx + 13, cy + 2); ctx.lineTo(cx + 17, cy + 10); ctx.stroke(); }
   else if (i === 1) { ctx.fillStyle = '#7fd0ff'; ctx.beginPath(); ctx.moveTo(cx - 10, cy - 12); ctx.lineTo(cx + 10, cy - 12); ctx.lineTo(cx, cy); ctx.lineTo(cx + 10, cy + 12); ctx.lineTo(cx - 10, cy + 12); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.fillRect(cx - 12, cy - 14, 24, 3); ctx.fillRect(cx - 12, cy + 11, 24, 3); }
-  else { ctx.strokeStyle = '#ff8a5a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(cx, cy, 11, 0, 6.28); ctx.stroke(); ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 6.28); ctx.stroke();
-    ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(cx - 20, cy + 10); ctx.quadraticCurveTo(cx - 18, cy - 6, cx - 8, cy - 4); ctx.stroke(); }
+  else { ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 6.28); ctx.fill();   
+    ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = 2.5; for (const r of [9, 15]) { ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 0.75, 0, 0, 6.28); ctx.stroke(); } }
 }
 function drawShop() {   
   SHOP.forEach((s, i) => {

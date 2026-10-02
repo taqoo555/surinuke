@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v83';
+const VERSION = 'v84';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -134,7 +134,9 @@ const CONFIG = {
   KAMI_CD: 8, KAMI_R: 60,         
   RANGED_EVERY: 1.0, RANGED_DMG: 5, RANGED_SPEED: 380,   
   
-  PUMP_GAP: 62, PUMP_CD: 3.5, PUMP_DUR: 1.6, PUMP_DPS: 6, PUMP_W: 22, PUMP_RANGE: 430, PUMP_TRACK: 140, PUMP_TRACK_UP: 50,
+  
+  PUMP_Y: 628, PUMP_SCALE: 0.7, PUMP_ARC: 4.5, PUMP_SPLASH: 30,
+  PUMP_CD: 3.5, PUMP_DUR: 1.6, PUMP_DPS: 6, PUMP_RANGE: 430, PUMP_TRACK: 140, PUMP_TRACK_UP: 50,
   PUMP_PRICE: 300, PUMP_COL_PRICE: 50, PUMP_PAT_PRICE: 80,
   SPECIAL_GAP: 34,                
   SPECIAL_FRONT: 18,              
@@ -637,12 +639,11 @@ function kamiBurst(g, x, y) {
   for (const o of g.enemies) if (o.hp > 0 && o.kind !== 'hydrant' && Math.hypot(o.x - x, o.y - y) < r) kill(g, o);
   if (!SIM) { if (R3.on) { fxSplash(x, y, 40); fxSteam(x, y, 10); for (const o of g.enemies) if (o.hp <= 0 && Math.hypot(o.x - x, o.y - y) < r) fxSmoke(o.x, o.y, 1); } else burst(x, y, '#6fc3ff', 40); rings.push({ x, y, r, col: '#9fdcff', life: 0.4 }); sfx('spray'); shake(6); }
 }
-const pumpPos = g => ({ x: g.pump && g.pump.x != null ? g.pump.x : g.lx, y: Math.min(600, CONFIG.LEADER_Y + g.cDepth + CONFIG.PUMP_GAP) });   
-function segDist(px, py, x0, y0, x1, y1) { const dx = x1 - x0, dy = y1 - y0, L = dx * dx + dy * dy || 1, t = clamp(((px - x0) * dx + (py - y0) * dy) / L, 0, 1); return Math.hypot(px - x0 - t * dx, py - y0 - t * dy); }
+const pumpPos = g => ({ x: g.pump && g.pump.x != null ? g.pump.x : g.lx, y: CONFIG.PUMP_Y });   
 function updatePump(g, dt) {   
   const P = g.pump, C = CONFIG; if (!P) return;
   if (P.x == null) P.x = g.lx;
-  P.x += (g.lx - P.x) * Math.min(1, dt * 6);
+  if (!g.halt) P.x += (g.lx - P.x) * Math.min(1, dt * 3);   
   if (g.over) { P.on = false; return; }
   const o = pumpPos(g);
   const pick = () => { let best = null, bd = 1e9;
@@ -664,10 +665,10 @@ function updatePump(g, dt) {
   P.acc += dt;
   if (P.acc >= 0.1) {   
     const d = C.PUMP_DPS * g.power * (1 + 0.3 * P.pow) * P.acc; P.acc = 0;
-    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && segDist(e.x, e.y, o.x, o.y - 10, P.ax, P.ay) < C.PUMP_W / 2 + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }
-    const B = g.boss; if (B && B.hp > 0 && segDist(B.x, B.y, o.x, o.y - 10, P.ax, P.ay) < C.PUMP_W / 2 + B.r) hurt(g, B, d);
+    for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && Math.hypot(e.x - P.ax, e.y - P.ay) < C.PUMP_SPLASH + (e.r || 8)) { hurt(g, e, d); if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }   
+    const B = g.boss; if (B && B.hp > 0 && Math.hypot(B.x - P.ax, B.y - P.ay) < C.PUMP_SPLASH + B.r) hurt(g, B, d);
   }
-  if (!SIM) { if (R3.on) { fxSplash(P.ax, P.ay, 2); if (Math.random() < 0.15) fxSteam(P.ax, P.ay, 1); } else if (Math.random() < 0.5) burst(P.ax, P.ay, '#9fdcff', 2); }
+  if (!SIM && Math.random() < 0.5) { if (R3.on) fxSplash(P.ax, P.ay, 1); else burst(P.ax, P.ay, '#9fdcff', 2); }
 }
 function updateSpecials(g, dt) {
   const C = CONFIG;
@@ -1495,8 +1496,8 @@ function drawEnemies(g) {
 }
 function drawPump2D(g) {   
   const P = g.pump; if (!P || g.over === 'fail') return; const o = pumpPos(g);
-  if (P.on) { ctx.strokeStyle = 'rgba(159,220,255,0.8)'; ctx.lineWidth = CONFIG.PUMP_W * 0.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(o.x, o.y - 10); ctx.lineTo(P.ax, P.ay); ctx.stroke(); ctx.lineCap = 'butt'; }
-  ctx.fillStyle = '#' + (PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0]).toString(16).padStart(6, '0'); rrect(o.x - 17, o.y - 26, 34, 52, 6); ctx.fill();
+  if (P.on) { ctx.strokeStyle = 'rgba(159,220,255,0.8)'; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(o.x, o.y - 10); ctx.quadraticCurveTo((o.x + P.ax) / 2, Math.min(o.y, P.ay) - 80, P.ax, P.ay); ctx.stroke(); ctx.lineCap = 'butt'; }
+  ctx.fillStyle = '#' + (PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0]).toString(16).padStart(6, '0'); rrect(o.x - 12, o.y - 18, 24, 36, 5); ctx.fill();
 }
 function drawCrowd(g) {
   for (const [k, lvk, col] of [['guard', 'lvGuard', '#ff5a4a'], ['kami', 'lvKami', '#ffc21a'], ['ranged', 'lvRanged', '#3fd46a']]) {   
@@ -1671,9 +1672,10 @@ function drawIcon(kind, cx, cy, sz) {
 }
 
 const pumpPatCv = document.createElement('canvas'); pumpPatCv.width = 128; pumpPatCv.height = 64;
+let pumpPatKey = '';
 function drawPumpSide(cx, cy, w, col, pat) {
   const h = w * 0.42, x = cx - w / 2, y = cy - h / 2;
-  paintPump(pumpPatCv.getContext('2d'), 128, 64, col, pat);
+  if (pumpPatKey !== col + '/' + pat) { pumpPatKey = col + '/' + pat; paintPump(pumpPatCv.getContext('2d'), 128, 64, col, pat); }   
   ctx.fillStyle = '#2a2d34'; ctx.fillRect(x + w * 0.04, y + h * 0.78, w * 0.92, h * 0.1);                              
   ctx.save(); rrect(x + w * 0.02, y + h * 0.28, w * 0.7, h * 0.56, w * 0.03); ctx.clip(); ctx.drawImage(pumpPatCv, x + w * 0.02, y + h * 0.28, w * 0.7, h * 0.56); ctx.restore();   
   ctx.save(); rrect(x + w * 0.7, y + h * 0.36, w * 0.28, h * 0.48, w * 0.04); ctx.clip(); ctx.drawImage(pumpPatCv, x + w * 0.7, y + h * 0.36, w * 0.28, h * 0.48); ctx.restore();   
@@ -1746,12 +1748,15 @@ function drawGarage() {
       if (!own) pricePill(b.x + 2, b.y + 46, b.w - 4, C.PUMP_COL_PRICE); }
     else if (b.kind === 'pat') { const own = (meta.pumpPats || [0]).includes(b.i), sel = (meta.pumpPat || 0) === b.i;
       ctx.fillStyle = 'rgba(20,26,50,0.92)'; rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
-      ctx.save(); rrect(b.x + 8, b.y + 8, b.w - 16, 36, 6); ctx.clip(); paintPump(pumpPatCv.getContext('2d'), 128, 64, PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0], b.i); ctx.drawImage(pumpPatCv, b.x + 8, b.y + 8, b.w - 16, 36); ctx.restore();
+      ctx.save(); rrect(b.x + 8, b.y + 8, b.w - 16, 36, 6); ctx.clip(); const tc = patTile(b.i); ctx.drawImage(tc, b.x + 8, b.y + 8, b.w - 16, 36); ctx.restore();
       ctx.strokeStyle = sel ? '#ffffff' : '#3a4260'; ctx.lineWidth = sel ? 3 : 1.5; rrect(b.x + 1, b.y + 1, b.w - 2, b.h - 2, 10); ctx.stroke();
       txt(PUMP_PATS[b.i], b.x + b.w / 2, b.y + 54, 9, '#fff', 'center', '800');
       if (!own) pricePill(b.x + 6, b.y + b.h - 22, b.w - 12, C.PUMP_PAT_PRICE); }
   }
 }
+const patTiles = [];
+function patTile(i) { const col = PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0], t = patTiles[i] || (patTiles[i] = { c: Object.assign(document.createElement('canvas'), { width: 128, height: 64 }), k: '' });
+  if (t.k !== String(col)) { t.k = String(col); paintPump(t.c.getContext('2d'), 128, 64, col, i); } return t.c; }
 function drawPerfIcon(i, cx, cy) {   
   if (i === 0) { const r = 11; ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.moveTo(cx, cy - r * 1.5); ctx.bezierCurveTo(cx + r * 1.1, cy - r * 0.3, cx + r, cy + r, cx, cy + r); ctx.bezierCurveTo(cx - r, cy + r, cx - r * 1.1, cy - r * 0.3, cx, cy - r * 1.5); ctx.fill();
     ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx + 14, cy - 6); ctx.lineTo(cx + 18, cy + 2); ctx.lineTo(cx + 13, cy + 2); ctx.lineTo(cx + 17, cy + 10); ctx.stroke(); }
@@ -2183,10 +2188,11 @@ function init3D() {
     const pTurret = new T.Group(); pTurret.position.set(0, 2.1, 0.1); pump.add(pTurret);
     const pBase = new T.Mesh(new T.CylinderGeometry(0.32, 0.38, 0.3, 12), M(0xc8ccd4)); pTurret.add(pBase);
     const pNoz = new T.Mesh(new T.CylinderGeometry(0.11, 0.16, 1.1, 10), M(0xffd84a)); pNoz.rotation.x = -Math.PI / 2 + 0.25; pNoz.position.set(0, 0.2, -0.5); pTurret.add(pNoz);
-    pump.traverse(o => { if (o.isMesh) o.castShadow = true; }); pump.visible = false; scene3.add(pump);
-    const beamMat = new T.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.55, depthWrite: false });
-    const beam = new T.Mesh(new T.CylinderGeometry(1, 1, 1, 12, 1, true), beamMat); beam.visible = false; beam.renderOrder = 3; scene3.add(beam);
-    const beamCore = new T.Mesh(new T.CylinderGeometry(1, 1, 1, 10, 1, true), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false })); beamCore.visible = false; beamCore.renderOrder = 4; scene3.add(beamCore);
+    pBody.castShadow = true; pump.visible = false; scene3.add(pump);   
+    
+    const beam = new T.InstancedMesh(new T.CylinderGeometry(1, 1, 1, 8, 1, true), new T.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.55, depthWrite: false }), 14);
+    const beamCore = new T.InstancedMesh(new T.CylinderGeometry(1, 1, 1, 6, 1, true), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false }), 14);
+    for (const m of [beam, beamCore]) { m.visible = false; m.frustumCulled = false; scene3.add(m); } beam.renderOrder = 3; beamCore.renderOrder = 4;
     const bossAura = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xffb870, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }));
     bossAura.renderOrder = 4; bossAura.visible = false; scene3.add(bossAura);   
     Object.assign(R3, { bossAura, col2: new T.Color(), bosses, hydrants, tanks, officeG, homeG, embers, rings, spec, missiles, shieldMat, cannonMat, pump, pumpCv, pumpTex, pTurret, beam, beamCore });
@@ -2213,20 +2219,28 @@ function renderPump3D(g, R) {
   R.pump.visible = on; R.beam.visible = R.beamCore.visible = false; if (!on) return;
   const key = meta.pumpColor + '/' + meta.pumpPat;
   if (R.pumpKey !== key) { R.pumpKey = key; paintPump(R.pumpCv.getContext('2d'), 128, 64, PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0], meta.pumpPat || 0); R.pumpTex.needsUpdate = true; }
-  const o = pumpPos(g), x = wx(o.x), z = wz(o.y), bob = Math.abs(Math.sin(performance.now() / 120)) * 0.04;
-  R.pump.position.set(x, bob, z); R.pump.scale.set(0.95, 0.95, 0.95);
+  const S = CONFIG.PUMP_SCALE, o = pumpPos(g), x = wx(o.x), z = wz(o.y), bob = g.halt ? 0 : Math.abs(Math.sin(performance.now() / 120)) * 0.03;
+  R.pump.position.set(x, bob, z); R.pump.scale.set(S, S, S);
   const tx = P.on ? wx(P.ax) - x : 0, tz = P.on ? wz(P.ay) - z : -1;
   R.pTurret.rotation.y = Math.atan2(-tx, -tz);
   if (!P.on) return;
   
-  const sx = x + Math.sin(R.pTurret.rotation.y) * -0.6, sz = z + Math.cos(R.pTurret.rotation.y) * -0.6, sy = 2.3;
-  const ex = wx(P.ax), ez = wz(P.ay), ey = 0.3;
-  const v = R.v.set(ex - sx, ey - sy, ez - sz), len = v.length(); v.normalize();
-  const wob = 1 + 0.12 * Math.sin(performance.now() / 40);
-  for (const [m, rad] of [[R.beam, 0.32 * wob], [R.beamCore, 0.14]]) {
-    m.visible = true; m.position.set((sx + ex) / 2, (sy + ey) / 2, (sz + ez) / 2);
-    m.quaternion.setFromUnitVectors(R.up || (R.up = new R.T.Vector3(0, 1, 0)), v); m.scale.set(rad, len, rad);
+  const ry = R.pTurret.rotation.y, sx = x - Math.sin(ry) * 0.6 * S, sz = z - Math.cos(ry) * 0.6 * S, sy = 2.4 * S;
+  const ex = wx(P.ax), ez = wz(P.ay), ey = 0.2, len0 = Math.hypot(ex - sx, ez - sz);
+  const cx = (sx + ex) / 2, cz = (sz + ez) / 2, cy = Math.max(sy, ey) + CONFIG.PUMP_ARC * Math.min(1, len0 / 12) * 2;
+  const pt = t => [(1 - t) * (1 - t) * sx + 2 * (1 - t) * t * cx + t * t * ex, (1 - t) * (1 - t) * sy + 2 * (1 - t) * t * cy + t * t * ey, (1 - t) * (1 - t) * sz + 2 * (1 - t) * t * cz + t * t * ez];
+  const d = R.dummy, N = 14, up = R.up || (R.up = new R.T.Vector3(0, 1, 0)), wob = 1 + 0.12 * Math.sin(performance.now() / 40);
+  let a = pt(0);
+  for (let k = 0; k < N; k++) {
+    const b = pt((k + 1) / N), v = R.v.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = v.length() * 1.15; v.normalize();
+    d.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); d.quaternion.setFromUnitVectors(up, v);
+    const r0 = 0.26 * wob * (0.8 + 0.4 * k / N);   
+    d.scale.set(r0, L, r0); d.updateMatrix(); R.beam.setMatrixAt(k, d.matrix);
+    d.scale.set(r0 * 0.45, L, r0 * 0.45); d.updateMatrix(); R.beamCore.setMatrixAt(k, d.matrix);
+    a = b;
   }
+  d.quaternion.set(0, 0, 0, 1); d.rotation.set(0, 0, 0);
+  for (const m of [R.beam, R.beamCore]) { m.visible = true; m.instanceMatrix.needsUpdate = true; }
 }
 function resize3D() {
   if (!R3.on) return;

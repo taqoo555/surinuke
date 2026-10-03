@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v101';
+const VERSION = 'v102';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1068,7 +1068,7 @@ function update(g, dt) {
     if (e.fixed) { e.y += scroll * dt; if (e.flash > 0) e.flash -= dt; continue; }   
     if (e.kind === 'ball' && e.st) {   
       if (e.st === 'drift' && e.y > C.LEADER_Y - C.BALL_SENSE) { e.st = 'wind'; e.wt = C.BALL_WIND; }
-      if (e.st === 'wind') { e.y += scroll * dt; e.wt -= dt; if (e.wt <= 0) { const dx = g.lx - e.x, dy = C.LEADER_Y + 6 - e.y, l = Math.hypot(dx, dy) || 1; e.st = 'dash'; e.dvx = dx / l * C.BALL_DASH; e.dvy = dy / l * C.BALL_DASH; if (!SIM) sfx('warn'); } }
+      if (e.st === 'wind') { e.y += scroll * dt; e.wt -= dt; if (e.wt <= 0) { const dx = g.lx - e.x, dy = C.LEADER_Y + 6 - e.y, l = Math.hypot(dx, dy) || 1; e.st = 'dash'; e.dvx = dx / l * C.BALL_DASH; e.dvy = dy / l * C.BALL_DASH; if (!SIM) sfx('dash'); } }
       if (e.st === 'dash') { e.x += e.dvx * dt; e.y += (e.dvy + scroll) * dt; }
     }
     const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth && !(e.kind === 'ball' && e.st);
@@ -1328,7 +1328,7 @@ function bigBoom(x, y) {
 }
 
 
-let audio = null, muted = false, lastShot = 0, lastHit = 0;
+let audio = null, muted = false, lastShot = 0, lastHit = 0, lastDash = 0;
 
 const MID = m => 440 * Math.pow(2, (m - 69) / 12);
 const BGM = {
@@ -1445,7 +1445,9 @@ function sfx(k) {
     case 'pump': noise(0.5, 0.07, 2600); break;
     
     case 'hit': if (now - lastHit < 70) return; lastHit = now; tone(210 + Math.random() * 70, 0.05, 'triangle', 0.16, 90); break;
-    case 'water': noise(0.45, 0.05, 2200); break;   
+    case 'water': noise(0.45, 0.05, 2200); break;
+    
+    case 'dash': if (now - lastDash < 150) return; lastDash = now; tone(520, 0.09, 'sine', 0.1, 900); break;   
     case 'go': tone(523, 0.1, 'triangle', 0.5); setTimeout(() => tone(784, 0.25, 'triangle', 0.5), 70); break;
   }
 }
@@ -2796,7 +2798,8 @@ function drawLabels3D(g) {
 let last = performance.now();
 function frame(now) {
   let dt = clamp((now - last) / 1000, 0, 0.05); last = now;
-  try { bgmTick(scene === 'play' && game ? (game.over ? null : game.boss && game.boss.hp > 0 ? 'boss' : 'main') : 'main'); } catch (e) {}      
+  
+  try { bgmTick(scene === 'play' && game ? (game.over ? null : game.boss && game.boss.hp > 0 && game.halt ? (game.cutT > 0 ? null : 'boss') : 'main') : 'main'); } catch (e) {}      
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const in3D = R3.on;   
   document.getElementById('gl').style.display = in3D ? 'block' : 'none';

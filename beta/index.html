@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v100';
+const VERSION = 'v101';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -155,7 +155,7 @@ const CONFIG = {
   UP_ARMY: 1,                     
   COST_BASE: 12, COST_GROW: 1.25,    
 
-  VOLUME: 0.35,
+  VOLUME: 0.35, BGM_VOL: 0.32,   
 };
 
 
@@ -1329,6 +1329,65 @@ function bigBoom(x, y) {
 
 
 let audio = null, muted = false, lastShot = 0, lastHit = 0;
+
+const MID = m => 440 * Math.pow(2, (m - 69) / 12);
+const BGM = {
+  main: { bpm: 132, len: 128,
+    chords: [[48, 52, 55], [45, 48, 52], [41, 45, 48], [43, 47, 50], [48, 52, 55], [45, 48, 52], [41, 45, 48], [43, 47, 50]],
+    mel: [[0, 76, 2], [4, 79, 2], [8, 81, 1], [10, 79, 1], [12, 76, 3],
+          [16, 72, 2], [20, 76, 2], [24, 74, 4], [28, 72, 2],
+          [32, 69, 2], [36, 72, 2], [40, 77, 2], [44, 76, 2],
+          [48, 74, 4], [56, 67, 2], [60, 71, 2],
+          [64, 76, 1], [66, 76, 1], [68, 79, 2], [72, 84, 4], [76, 81, 2],
+          [80, 79, 2], [84, 76, 2], [88, 81, 2], [92, 79, 2],
+          [96, 77, 2], [100, 76, 2], [104, 74, 2], [106, 72, 2], [108, 74, 2],
+          [112, 79, 4], [120, 71, 2], [124, 74, 2]], boss: false },
+  boss: { bpm: 150, len: 64,
+    chords: [[45, 48, 52], [45, 48, 52], [41, 45, 48], [40, 44, 47]],
+    mel: [[0, 69, 2], [2, 72, 2], [4, 76, 2], [6, 74, 2], [8, 72, 2], [10, 71, 2], [12, 69, 4],
+          [16, 76, 3], [19, 76, 1], [20, 77, 2], [22, 76, 2], [24, 74, 4], [28, 72, 4],
+          [32, 65, 2], [34, 69, 2], [36, 72, 2], [38, 77, 2], [40, 76, 4], [44, 72, 4],
+          [48, 71, 2], [50, 68, 2], [52, 71, 2], [54, 74, 2], [56, 76, 8]], boss: true },
+};
+let bgmG = null; const bgmSt = { mode: null, step: 0, next: 0 };
+function bnote(t, f, dur, type, vol, slide) {
+  const o = audio.createOscillator(), gn = audio.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+  gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(vol, t + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(gn).connect(bgmG); o.start(t); o.stop(t + dur + 0.03);
+}
+function bdrum(t, kind) {
+  if (kind === 'kick') { bnote(t, 120, 0.16, 'sine', 0.55, 45); return; }
+  const dur = kind === 'snare' ? 0.12 : 0.03, n = Math.floor(audio.sampleRate * dur), b = audio.createBuffer(1, n, audio.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+  const src = audio.createBufferSource(), f = audio.createBiquadFilter(), gn = audio.createGain();
+  src.buffer = b; f.type = kind === 'snare' ? 'bandpass' : 'highpass'; f.frequency.value = kind === 'snare' ? 1800 : 7000; gn.gain.value = kind === 'snare' ? 0.35 : 0.12;
+  src.connect(f).connect(gn).connect(bgmG); src.start(t);
+}
+function bgmStep(S, st, t, sp) {
+  const bar = Math.floor(st / 16), k = st % 16, ch = S.chords[bar % S.chords.length];
+  if (S.boss) {
+    if (k % 2 === 0) bnote(t, MID(ch[0] - 12 + (k % 4 === 2 ? 12 : 0)), sp * 1.6, 'triangle', 0.5);   
+    if (k % 8 === 0) bdrum(t, 'kick'); if (k % 8 === 4) bdrum(t, 'snare'); bdrum(t, 'hat');
+    if (k % 4 === 2) for (const m of ch) bnote(t, MID(m + 12), sp * 1.2, 'square', 0.05);
+  } else {
+    if (k === 0 || k === 8) bnote(t, MID(ch[0] - 12), sp * 3, 'triangle', 0.55);   
+    if (k === 6 || k === 14) bnote(t, MID(ch[0] - 5), sp * 1.5, 'triangle', 0.3);
+    if (k === 4 || k === 12) for (const m of ch) bnote(t, MID(m + 12), sp * 1.4, 'triangle', 0.1);   
+    if (k % 8 === 0) bdrum(t, 'kick'); if (k % 2 === 0) bdrum(t, 'hat');
+  }
+  for (const [s0, m, len] of S.mel) if (s0 === st) { bnote(t, MID(m), sp * len * 0.95, 'sine', 0.22); bnote(t, MID(m + 12), sp * len * 0.5, 'triangle', 0.05); }   
+}
+function bgmTick(want) {
+  if (!audio) return;
+  if (!bgmG) { bgmG = audio.createGain(); bgmG.gain.value = 0; bgmG.connect(audio.destination); }
+  bgmG.gain.setTargetAtTime(muted || !want ? 0 : CONFIG.VOLUME * CONFIG.BGM_VOL, audio.currentTime, 0.08);
+  if (want !== bgmSt.mode) { bgmSt.mode = want; bgmSt.step = 0; bgmSt.next = audio.currentTime + 0.06; }
+  const S = BGM[want]; if (!S || muted) return;
+  const sp = 60 / S.bpm / 4;
+  if (bgmSt.next < audio.currentTime - 0.1) bgmSt.next = audio.currentTime + 0.02;   
+  while (bgmSt.next < audio.currentTime + 0.25) { bgmStep(S, bgmSt.step, bgmSt.next, sp); bgmSt.step = (bgmSt.step + 1) % S.len; bgmSt.next += sp; }
+}
 function initAudio() {
   if (audio) return;
   try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
@@ -1366,23 +1425,23 @@ function sfx(k) {
   if (!audio || muted) return;
   const now = performance.now();
   switch (k) {
-    case 'shot': if (now - lastShot < 90) return; lastShot = now; tone(180, 0.035, 'sine', 0.08, 120); break;
+    case 'shot': if (now - lastShot < 90) return; lastShot = now; tone(180, 0.035, 'sine', 0.12, 120); break;   
     case 'kill': tone(160 + Math.random() * 50, 0.07, 'triangle', 0.22, 70); break;
-    case 'gate': tone(330, 0.09, 'triangle', 0.45); setTimeout(() => tone(440, 0.11, 'triangle', 0.45), 60); break;
+    case 'gate': tone(330, 0.09, 'triangle', 0.35); setTimeout(() => tone(440, 0.11, 'triangle', 0.35), 60); break;
     case 'bad': tone(110, 0.28, 'triangle', 0.5, 60); break;
     case 'lose': tone(90, 0.09, 'triangle', 0.3); break;
     case 'combo': [262, 330, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.4), i * 70)); break;
-    case 'boss': tone(55, 0.8, 'sawtooth', 0.35, 40); break;
+    case 'boss': tone(55, 0.8, 'sawtooth', 0.25, 40); break;
     case 'clear': [262, 330, 392, 523, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.18, 'triangle', 0.5), i * 110)); break;
     case 'fail': tone(150, 0.6, 'triangle', 0.45, 55); break;
-    case 'flip': [262, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.1, 'triangle', 0.4), i * 50)); break;
+    case 'flip': [262, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.1, 'triangle', 0.32), i * 50)); break;
     case 'warn': tone(440, 0.12, 'triangle', 0.3); setTimeout(() => tone(440, 0.12, 'triangle', 0.3), 180); break;
     case 'coin': tone(880 + Math.random() * 200, 0.04, 'triangle', 0.15); break;   
     case 'buy': tone(440, 0.07, 'triangle', 0.4); setTimeout(() => tone(660, 0.1, 'triangle', 0.4), 60); break;
     case 'no': tone(100, 0.1, 'triangle', 0.3); break;
     case 'tick': tone(392, 0.12, 'triangle', 0.45); break;   
-    case 'siren': [0, 1, 2, 3].forEach(i => setTimeout(() => tone(i % 2 ? 440 : 587, 0.24, 'square', 0.28), i * 250)); break;   
-    case 'spray': noise(1.1, 0.5, 1800); tone(300, 0.5, 'sine', 0.2, 120); break;   
+    case 'siren': [0, 1, 2, 3].forEach(i => setTimeout(() => tone(i % 2 ? 440 : 587, 0.24, 'square', 0.2), i * 250)); break;   
+    case 'spray': noise(1.1, 0.35, 1800); tone(300, 0.5, 'sine', 0.16, 120); break;   
     case 'pump': noise(0.5, 0.07, 2600); break;
     
     case 'hit': if (now - lastHit < 70) return; lastHit = now; tone(210 + Math.random() * 70, 0.05, 'triangle', 0.16, 90); break;
@@ -2736,7 +2795,8 @@ function drawLabels3D(g) {
 
 let last = performance.now();
 function frame(now) {
-  let dt = clamp((now - last) / 1000, 0, 0.05); last = now;   
+  let dt = clamp((now - last) / 1000, 0, 0.05); last = now;
+  try { bgmTick(scene === 'play' && game ? (game.over ? null : game.boss && game.boss.hp > 0 ? 'boss' : 'main') : 'main'); } catch (e) {}      
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const in3D = R3.on;   
   document.getElementById('gl').style.display = in3D ? 'block' : 'none';

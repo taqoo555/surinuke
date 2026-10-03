@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v112';
+const VERSION = 'v113';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -2323,6 +2323,13 @@ function init3D() {
     const sparkIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, transparent: true, depthWrite: false, blending: T.AdditiveBlending }), 600);
     const haloIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xff7a2a, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }), 500);
     for (const im of [puffIM, sparkIM, haloIM]) { im.frustumCulled = false; im.renderOrder = 5; scene3.add(im); }
+    
+    const bfBody = new T.InstancedMesh(new T.ConeGeometry(0.95, 2.3, 16), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78, depthWrite: false }), 60);
+    const bfCore = new T.InstancedMesh(new T.ConeGeometry(0.55, 1.5, 12), new T.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.9, depthWrite: false }), 60);
+    const bfHalo = new T.InstancedMesh(new T.PlaneGeometry(1, 1), haloIM.material, 60);
+    bfBody.setColorAt(0, new T.Color(0xff7a1a));
+    for (const im of [bfBody, bfCore, bfHalo]) { im.frustumCulled = false; im.count = 0; scene3.add(im); } bfBody.renderOrder = 3; bfCore.renderOrder = 4; bfHalo.renderOrder = 5;
+    Object.assign(R3, { bfBody, bfCore, bfHalo });
     puffIM.setColorAt(0, new T.Color(0xffffff)); sparkIM.setColorAt(0, new T.Color(0xffb030));
     
     const rockIM = new T.InstancedMesh(new T.IcosahedronGeometry(1, 0), new T.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), 120);
@@ -2360,7 +2367,10 @@ function init3D() {
     const boss = new T.Group();
     
     const bossBody = new T.Mesh(RBox(2.4, 1.6, 1.8), M(0xe8c9a0)); bossBody.position.y = 0.8; bossBody.castShadow = true; boss.add(bossBody);
-    const hroof = new T.Mesh(new T.ConeGeometry(1.75, 1.35, 28), M(0x8a3b2a)); hroof.position.y = 2.25; hroof.scale.set(1.0, 1, 0.85);    boss.add(hroof);
+    
+    const roofSh = new T.Shape(); roofSh.moveTo(-1.5, 0); roofSh.lineTo(1.5, 0); roofSh.lineTo(0, 1.2); roofSh.lineTo(-1.5, 0);
+    const roofGeo = new T.ExtrudeGeometry(roofSh, { depth: 1.9, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 3 }); roofGeo.translate(0, 0, -0.95);
+    const hroof = new T.Mesh(roofGeo, M(0x8a3b2a)); hroof.position.y = 1.6; hroof.castShadow = true; boss.add(hroof);
     for (const wx4 of [-0.65, 0.65]) { const w = new T.Mesh(new T.BoxGeometry(0.5, 0.45, 0.05), B(0xffa030)); w.position.set(wx4, 0.95, 0.92); boss.add(w); }
     const hdoor = new T.Mesh(new T.BoxGeometry(0.45, 0.8, 0.05), M(0x5a3a22)); hdoor.position.set(0, 0.4, 0.92); boss.add(hdoor);
     const bossFlames = [];   
@@ -2745,6 +2755,15 @@ function render3D(g, sx, sy) {
     d.rotation.set(0, 0, 0); d.quaternion.copy(R.cam.quaternion); d.position.set(wx(x), lift + r * 1.1, wz(y)); d.scale.set(r * 3.4 * fl, r * 3.4 * fl, 1); d.updateMatrix(); R.haloIM.setMatrixAt(n, d.matrix); d.quaternion.set(0, 0, 0, 1);   
     n++;
   };
+  let nb = 0;
+  const bflame = (x, y, r, col, ph, lift) => {   
+    if (nb >= 60) return;
+    const fl = 1 + 0.16 * Math.sin(g.t * 13 + ph) + 0.1 * Math.sin(g.t * 23 + ph * 1.7), sw = Math.sin(g.t * 7 + ph) * 0.14 + Math.sin(g.t * 17 + ph) * 0.06;
+    d.rotation.set(0, 0, sw); d.position.set(wx(x), lift + r * 1.1 * fl, wz(y)); d.scale.set(r, r * fl, r); d.updateMatrix(); R.bfBody.setMatrixAt(nb, d.matrix); R.col.setHex(col); R.bfBody.setColorAt(nb, R.col);
+    d.position.set(wx(x), lift + r * 0.8 * fl, wz(y) + r * 0.15); d.updateMatrix(); R.bfCore.setMatrixAt(nb, d.matrix);
+    d.rotation.set(0, 0, 0); d.quaternion.copy(R.cam.quaternion); d.position.set(wx(x), lift + r * 1.1, wz(y)); d.scale.set(r * 3.4 * fl, r * 3.4 * fl, 1); d.updateMatrix(); R.bfHalo.setMatrixAt(nb, d.matrix); d.quaternion.set(0, 0, 0, 1);
+    nb++;
+  };
   let nr = 0;
   const rock = (x, y, r, heat, ph, flash, lift) => {   
     if (nr >= 120) return;
@@ -2771,7 +2790,9 @@ function render3D(g, sx, sy) {
     if (BsF) { const bk2 = bossKindOf(g.level), bo2 = R.bosses[bk2], s2 = BsF.r / U3, fk = BsF.rage ? 1.4 : 1, hop = bo2 ? bo2.position.y : 0;
       for (const bf of (bo2 && bo2.userData.flames) || []) if (bf.fs) {
         const rr0 = 0.45 * bf.fs * s2 / 0.95 * 1.15 * fk;
-        flame(BsF.x + bf.fx * s2 * U3, BsF.y + (BsF.ramY || 0) + bf.fz * s2 * U3, rr0, bf.col, bf.ph, hop + Math.max(0, (bf.fy - 0.7 * bf.fs) * s2), true); } }
+        bflame(BsF.x + bf.fx * s2 * U3, BsF.y + (BsF.ramY || 0) + bf.fz * s2 * U3, rr0, bf.col, bf.ph, hop + Math.max(0, (bf.fy - 0.7 * bf.fs) * s2)); } }
+    R.bfBody.count = R.bfCore.count = R.bfHalo.count = nb;
+    for (const im of [R.bfBody, R.bfCore, R.bfHalo]) im.instanceMatrix.needsUpdate = true; if (R.bfBody.instanceColor) R.bfBody.instanceColor.needsUpdate = true;
   }
   for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); if (em.drop) { if (em.t > em.T - 0.45) rock(em.tx, em.ty, 22 / U3, 0.6, em.tx, false, (em.T - em.t) / 0.45 * 12); continue; } flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }   
   

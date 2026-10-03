@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v95';
+const VERSION = 'v96';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -778,6 +778,7 @@ function updatePump(g, dt) {
     for (const e of g.enemies) if (e.hp > 0 && e.kind !== 'hydrant' && e.kind !== 'tank' && e.y > -10 && Math.hypot(e.x - P.ax, e.y - P.ay) < sp.r + (e.r || 8)) { hurt(g, e, d * (1 - 0.75 * Math.hypot(e.x - P.ax, e.y - P.ay) / (sp.r + (e.r || 8))));    if (!SIM && R3.on && e.hp <= 0) fxSmoke(e.x, e.y, 1); }   
     const B = g.boss; if (B && B.hp > 0 && Math.hypot(B.x - P.ax, B.y - P.ay) < sp.r + B.r) hurt(g, B, d);
   }
+  if (!SIM) { P.sndT = (P.sndT || 0) - dt; if (P.sndT <= 0) { P.sndT = 0.4; sfx('water'); } }   
   if (!SIM && R3.on) { P.dropT = (P.dropT || 0) + dt; while (P.dropT > 1 / 70) { P.dropT -= 1 / 70; sprayDrop(o, P); } }
   if (!SIM && Math.random() < 0.5) { const r = pumpSpread(P, Math.hypot(P.ax - o.x, P.ay - o.y)).r; if (R3.on) fxSplash(P.ax + rr2(-1, 1) * r * 0.7, P.ay + rr2(-1, 1) * r * 0.5, 1); else burst(P.ax, P.ay, '#9fdcff', 2); }
 }
@@ -1164,6 +1165,7 @@ function hurt(g, e, d) {
   if (e === g.boss) {
     if (e.y < 0) return;   
     e.hp -= d; e.flash = 0.06; e.punch = 0.12;   
+    if (!SIM) sfx('hit');   
     
     if (!SIM && Math.random() < 0.3) popText(e.x + rr2(-30, 30), e.y + rr2(-14, 10), Math.round(d * CONFIG.TIRE_SHOW), '#ffd84a', 13 + Math.min(8, Math.log10(Math.max(1, d * CONFIG.TIRE_SHOW)) * 3));
     return;
@@ -1324,7 +1326,7 @@ function bigBoom(x, y) {
 }
 
 
-let audio = null, muted = false, lastShot = 0;
+let audio = null, muted = false, lastShot = 0, lastHit = 0;
 function initAudio() {
   if (audio) return;
   try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
@@ -1379,7 +1381,10 @@ function sfx(k) {
     case 'tick': tone(392, 0.12, 'triangle', 0.45); break;   
     case 'siren': [0, 1, 2, 3].forEach(i => setTimeout(() => tone(i % 2 ? 440 : 587, 0.24, 'square', 0.28), i * 250)); break;   
     case 'spray': noise(1.1, 0.5, 1800); tone(300, 0.5, 'sine', 0.2, 120); break;   
-    case 'pump': noise(0.5, 0.07, 2600); break;   
+    case 'pump': noise(0.5, 0.07, 2600); break;
+    
+    case 'hit': if (now - lastHit < 70) return; lastHit = now; tone(210 + Math.random() * 70, 0.05, 'triangle', 0.16, 90); break;
+    case 'water': noise(0.45, 0.05, 2200); break;   
     case 'go': tone(523, 0.1, 'triangle', 0.5); setTimeout(() => tone(784, 0.25, 'triangle', 0.5), 70); break;
   }
 }

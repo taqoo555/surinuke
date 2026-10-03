@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v117';
+const VERSION = 'v118';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -107,7 +107,7 @@ const CONFIG = {
   CUT_T: 1.6,                     
   BOSS_STOP: 250,                 
   
-  ATK_WARN: 1.1, ATK_WARN_RAGE: 1.0, ATK_ON: 0.35, RAGE_DMG: 1.5, QUAKE_T: 0.55, QUAKE_ONE: 0.4, ATK_REST: 1.4, ATK_HIT: 0.5, ATK_MAX: 0.35, DROP_R: 34, DROP_MAX: 0.15,
+  ATK_WARN: 1.1, ATK_WARN_RAGE: 1.0, ATK_ON: 0.35, RAGE_DMG: 1.5, QUAKE_T: 0.55, QUAKE_ONE: 0.4, ATK_REST: 1.4, THROW_WARN: 0.6, THROW_T: 0.25, THROW_W: 30, BREATH_ONE: 0.6, ATK_HIT: 0.5, ATK_MAX: 0.35, DROP_R: 34, DROP_MAX: 0.15,
   EMBER_EVERY: 1.3, EMBER_MIN: 0.55, EMBER_T: 1.0, EMBER_R: 28, EMBER_FRAC: 0.08, EMBER_MAX: 0.3,    BOSS_RAGE: 20,   
   BOSS_HP: 1700, CLASH: 25,         
 
@@ -904,7 +904,8 @@ function trackFlow(g, dt, scroll) {
 
 
 
-const BOSS_MOVES = { house: ['ember'], tower: ['beam'], truck: ['ram'], majin: ['ram'], dragon: ['ram', 'ember'] };   
+
+const BOSS_MOVES = { house: ['ember'], tower: ['beam'], truck: ['ram'], majin: ['ram', 'throw'], dragon: ['ram', 'breath', 'firedrop'] };   
 function bossKindOf(level) {
   if (level % 10 === 0) return (level / 10) % 2 === 1 ? 'majin' : 'dragon';   
   const sc = stageOf(level).scene;
@@ -1164,28 +1165,32 @@ function update(g, dt) {
         
         const moves = BOSS_MOVES[kind] || ['ember'], mv = moves[(B.ai = (B.ai || 0) + 1) % moves.length];
         if (mv === 'ember') for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ x0: B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: 0, T: C.EMBER_T });
-        else if (mv === 'drop') for (let k = 0; k < (g.level <= 5 ? 2 : 3); k++)    (g.embers = g.embers || []).push({ drop: true, r: C.DROP_R, x0: 0, y0: 0, tx: clamp(k === 0 ? g.lx : g.lx + rr(-110, 110), C.ROAD_L + 14, C.ROAD_R - 14), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: -k * 0.25, T: C.ATK_WARN + 0.2 });
+        else if (mv === 'drop' || mv === 'firedrop') for (let k = 0; k < (g.level <= 5 ? 2 : 3); k++)    (g.embers = g.embers || []).push({ drop: true, fire: mv === 'firedrop', r: C.DROP_R, x0: 0, y0: 0, tx: clamp(k === 0 ? g.lx : g.lx + rr(-110, 110), C.ROAD_L + 14, C.ROAD_R - 14), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: -k * 0.25, T: C.ATK_WARN + 0.2 });
         else { 
-          const safe = mv === 'ram' ? -1 : ri(0, 2), one = mv === 'beam' && rng() < C.QUAKE_ONE;
-          const lanes = mv === 'ram' ? [laneOf(g.lx)] : one ? [ri(0, 2)] : [0, 1, 2].filter(i => i !== safe);
+          const safe = mv === 'ram' ? -1 : ri(0, 2), one = (mv === 'beam' && rng() < C.QUAKE_ONE) || (mv === 'breath' && rng() < C.BREATH_ONE);
+          const lanes = mv === 'throw' ? [] : mv === 'ram' ? [laneOf(g.lx)] : one ? [mv === 'breath' ? laneOf(g.lx) : ri(0, 2)] : [0, 1, 2].filter(i => i !== safe);
           const safeX = [0, 1, 2].filter(l => !lanes.includes(l)).map(laneX), need = safeX.length ? Math.min(...safeX.map(x => Math.abs(x - g.lx))) / C.MOVE_SPEED + 0.35 : 0;
           B.atk = { mv, lanes, t: 0, warn: Math.max(B.rage ? C.ATK_WARN_RAGE : C.ATK_WARN, need), hit: false, from: rng() < 0.5 ? -1 : 1 };
           if (mv === 'beam' && !SIM) setTimeout(() => sfx('beam'), B.atk.warn * 1000);   
           if (mv === 'ram') B.atk.x0 = B.x;
+          if (mv === 'throw') { B.atk.warn = C.THROW_WARN; B.atk.tx = clamp(g.lx, C.ROAD_L + 20, C.ROAD_R - 20); B.atk.x0 = B.x; }
+          if (mv === 'breath' && !SIM) setTimeout(() => sfx('fire'), B.atk.warn * 1000);
           B.et = Math.max(B.et, B.atk.warn + C.ATK_ON + 0.6); }
       }
       if (B.atk) {   
         const A = B.atk; A.t += dt;
         if (A.mv === 'ram') { const L = laneX(A.lanes[0]), k = clamp(A.t / A.warn, 0, 1); B.x = A.x0 + (L - A.x0) * Math.min(1, k * 2); }   
         if (!SIM && A.mv === 'beam' && A.t >= A.warn && !A.hit) { const k = (A.t - A.warn) / C.QUAKE_T, fy = B.y + (C.LEADER_Y + 40 - B.y) * k; if (R3.on) for (const l of A.lanes) { fxSmoke(laneX(l) + rr2(-25, 25), fy, 1); fxSparks(laneX(l) + rr2(-20, 20), fy, 1); } }   
-        if (!A.hit && A.t >= A.warn + (A.mv === 'ram' ? C.ATK_ON : A.mv === 'beam' ? C.QUAKE_T : 0)) {   
+        const hitAt = A.warn + (A.mv === 'ram' ? C.ATK_ON : A.mv === 'beam' || A.mv === 'breath' ? C.QUAKE_T : A.mv === 'throw' ? C.THROW_T : 0);
+        if (!SIM && A.mv === 'throw' && !A.thrown && A.t >= A.warn) { A.thrown = true; sfx('dash'); }
+        if (!A.hit && A.t >= hitAt) {   
           A.hit = true;
-          let n = 0; for (const u of g.units) if (A.lanes.includes(laneOf(u.x))) n += u.w;
+          let n = 0; for (const u of g.units) if (A.mv === 'throw' ? Math.abs(u.x - A.tx) < C.THROW_W + u.d / 2 : A.lanes.includes(laneOf(u.x))) n += u.w;
           const rk = B.rage ? C.RAGE_DMG : 1; n = Math.min(Math.round(n * C.ATK_HIT * rk), Math.ceil(g.N * C.ATK_MAX * rk));
-          if (!SIM) { sfx(A.mv === 'beam' ? 'thud' : 'thud'); if (R3.on) for (const l of A.lanes) fxSparks(laneX(l), C.LEADER_Y, 8); }
-          if (n > 0) { loseUnits(g, n, 'boss', laneX(A.lanes[0]), C.LEADER_Y - 20); if (g.over) return; }
+          if (!SIM) { sfx('thud'); if (R3.on) { for (const l of A.lanes) fxSparks(laneX(l), C.LEADER_Y, 8); if (A.mv === 'throw') { fxSparks(A.tx, C.LEADER_Y, 14); fxSmoke(A.tx, C.LEADER_Y, 3); } } }
+          if (n > 0) { loseUnits(g, n, 'boss', A.mv === 'throw' ? A.tx : laneX(A.lanes[0]), C.LEADER_Y - 20); if (g.over) return; }
         }
-        if (A.t >= A.warn + C.ATK_ON + (A.mv === 'ram' ? 1.0 : A.mv === 'beam' ? C.QUAKE_T : 0)) { B.atk = null; B.et = Math.max(B.et, C.ATK_REST); }   
+        if (A.t >= hitAt + (A.mv === 'ram' ? C.ATK_ON + 1.0 : A.mv === 'throw' ? 0.25 : C.ATK_ON)) { B.atk = null; B.et = Math.max(B.et, C.ATK_REST); }   
       }
     }
   }
@@ -1262,6 +1267,7 @@ function botStep(g, bot, st) {
     if (st.t <= 0) { st.t = 1; g.target = rr(40, 320); }
     return;
   }
+  if (g.boss && g.boss.atk && !g.boss.atk.hit && g.boss.atk.t > 0.2 && g.boss.atk.mv === 'throw') { const A = g.boss.atk; g.target = clamp(A.tx + (g.lx < A.tx ? -100 : 100), C.ROAD_L + 30, C.ROAD_R - 30); return; }   
   if (g.boss && g.boss.atk && !g.boss.atk.hit && g.boss.atk.t > 0.25) {   
     const A = g.boss.atk, safe = [0, 1, 2].filter(l => !A.lanes.includes(l));
     if (safe.length) { const best = safe.reduce((a, b) => Math.abs(laneX(a) - g.lx) < Math.abs(laneX(b) - g.lx) ? a : b); g.target = laneX(best); return; }
@@ -1490,7 +1496,8 @@ function sfx(k) {
     case 'bad': tone(110, 0.28, 'triangle', 0.5, 60); break;
     case 'lose': tone(90, 0.09, 'triangle', 0.3); break;
     case 'beam': noise(0.7, 0.3, 160); tone(48, 0.7, 'sine', 0.3, 35); break;   
-    case 'thud': tone(70, 0.18, 'sine', 0.3, 40); break;   
+    case 'thud': tone(70, 0.18, 'sine', 0.3, 40); break;
+    case 'fire': noise(0.6, 0.22, 700); break;      
     case 'ember': if (now - lastEmber < 120) return; lastEmber = now; tone(130, 0.07, 'triangle', 0.12); break;   
     case 'combo': [262, 330, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.4), i * 70)); break;
     case 'boss': tone(55, 0.8, 'sawtooth', 0.25, 40); break;
@@ -2423,7 +2430,8 @@ function init3D() {
     }
     const mouth = new T.Mesh(new T.BoxGeometry(0.55, 0.12, 0.06), B(0x6b1a08)); mouth.position.set(0, 2.35, 0.82); majin.add(mouth);
     const arms = [];
-    for (const sx of [-1, 1]) { const arm = new T.Group(); arm.position.set(sx * 1.05, 2.0, 0.1); const a1 = new T.Mesh(new T.ConeGeometry(0.32, 1.3, 20), mBodyMat); a1.rotation.z = sx * 2.2; a1.position.set(sx * 0.4, -0.2, 0); arm.add(a1); const fist = new T.Mesh(new T.SphereGeometry(0.33, 24, 18), B(0xffc23a)); fist.position.set(sx * 0.85, -0.55, 0.1); arm.add(fist); majin.add(arm); arms.push({ arm, sx }); }
+    for (const sx of [-1, 1]) { const arm = new T.Group(); arm.position.set(sx * 1.05, 2.0, 0.1); const a1 = new T.Mesh(new T.CylinderGeometry(0.2, 0.27, 0.95, 20), mBodyMat); a1.rotation.z = sx * 1.95; a1.position.set(sx * 0.42, -0.2, 0); arm.add(a1);   
+      const sh1 = new T.Mesh(new T.SphereGeometry(0.29, 24, 18), mBodyMat); arm.add(sh1); const fist = new T.Mesh(new T.SphereGeometry(0.38, 24, 18), B(0xffc23a)); fist.scale.set(1, 0.9, 0.9); fist.position.set(sx * 0.88, -0.38, 0.1); arm.add(fist); majin.add(arm); arms.push({ arm, sx }); }
     const majinFlames = mkFlames(majin, [[0, 3.6, -0.2, 1.4, 0xff6a1a], [-0.5, 3.3, -0.3, 1.0, 0xff3b1a], [0.5, 3.3, -0.3, 1.0, 0xff7a1a], [-0.95, 1.4, 0.6, 0.5, 0xffc21a], [0.95, 1.4, 0.6, 0.5, 0xffc21a]]);
     const litMap = new Map();   
     majin.traverse(o => { if (!o.isMesh || !o.visible || !o.material.isMeshBasicMaterial) return; const hx = o.material.color.getHex(); if (hx === 0xfff3a0 || hx === 0x6b1a08) return;
@@ -2801,10 +2809,14 @@ function render3D(g, sx, sy) {
       for (const bf of (bo2 && bo2.userData.flames) || []) if (bf.fs) {
         const rr0 = 0.45 * bf.fs * s2 / 0.95 * 1.15 * fk;
         bflame(BsF.x + bf.fx * s2 * U3, BsF.y + (BsF.ramY || 0) + bf.fz * s2 * U3, rr0, bf.col, bf.ph, hop + Math.max(0, (bf.fy - 0.7 * bf.fs) * s2)); } }
+    const A2 = g.boss && g.boss.hp > 0 && g.boss.atk;   
+    if (A2 && A2.mv === 'throw' && A2.t >= A2.warn) { const k = clamp((A2.t - A2.warn) / CONFIG.THROW_T, 0, 1); bflame(A2.x0 + (A2.tx - A2.x0) * k, g.boss.y + (CONFIG.LEADER_Y - g.boss.y) * k, 0.55, 0xff6a1a, g.t * 9, 1.6 * (1 - k) + 0.2); }
+    if (A2 && A2.mv === 'breath' && A2.t >= A2.warn && A2.t < A2.warn + CONFIG.QUAKE_T + CONFIG.ATK_ON) { const k = clamp((A2.t - A2.warn) / CONFIG.QUAKE_T, 0, 1), fy = g.boss.y + 30 + (CONFIG.LEADER_Y + 40 - g.boss.y - 30) * k;
+      for (const l of A2.lanes) for (let q = 0; q < 9; q++) { const yy = g.boss.y + 30 + (fy - g.boss.y - 30) * q / 8, xx = g.boss.x + (laneX(l) - g.boss.x) * Math.min(1, (yy - g.boss.y) / 120); bflame(xx + Math.sin(g.t * 20 + q) * 6, yy, 0.38 + 0.25 * (q / 8), q % 3 ? 0xff7a1a : 0xffc21a, q + l * 3, 0.5 + 1.6 * (1 - q / 8)); } }
     R.bfBody.count = R.bfCore.count = R.bfHalo.count = nb;
     for (const im of [R.bfBody, R.bfCore, R.bfHalo]) im.instanceMatrix.needsUpdate = true; if (R.bfBody.instanceColor) R.bfBody.instanceColor.needsUpdate = true;
   }
-  for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); if (em.drop) { if (em.t > em.T - 0.45) rock(em.tx, em.ty, 22 / U3, 0.6, em.tx, false, (em.T - em.t) / 0.45 * 12); continue; } flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }   
+  for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); if (em.drop) { if (em.t > em.T - 0.45) { if (em.fire) flame(em.tx, em.ty, 20 / U3 * 1.1, 0xff6a1a, em.tx, (em.T - em.t) / 0.45 * 12, true); else rock(em.tx, em.ty, 22 / U3, 0.6, em.tx, false, (em.T - em.t) / 0.45 * 12); } continue; }    flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }   
   
   for (const { sp, ahead } of AH.squads) for (const [li, lane] of sp.lanes.entries()) {
     if (sp.spec) {   
@@ -2851,7 +2863,10 @@ function render3D(g, sx, sy) {
   
   for (const m of R.laneWarn) m.visible = false; for (const b of R.beamCol) b.core.visible = b.glow.visible = b.aim.visible = false; R.arm.visible = false;
   const ray = (m, x0, y0, z0, x1, y1, z1, rad) => { const v = R.v.set(x1 - x0, y1 - y0, z1 - z0), L = v.length(); v.normalize(); m.visible = true; m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); m.quaternion.setFromUnitVectors(R.up || (R.up = new R.T.Vector3(0, 1, 0)), v); m.scale.set(rad, L, rad); };
-  if (g.boss && g.boss.atk) {
+  if (g.boss && g.boss.atk && g.boss.atk.mv === 'throw' && g.boss.atk.t < g.boss.atk.warn) {   
+    const A = g.boss.atk, Bb = g.boss, m = R.laneWarn[0], zA = wz(Bb.y), zB = wz(CONFIG.LEADER_Y + 30), k = clamp(A.t / A.warn, 0, 1);
+    m.visible = true; m.position.set(wx(A.tx), 0.04, (zA + zB) / 2); m.scale.set(CONFIG.THROW_W * 2 / U3, zB - zA, 1); m.material.opacity = 0.15 + 0.35 * k * (0.6 + 0.4 * Math.sin(g.t * 24));
+  } else if (g.boss && g.boss.atk) {
     const A = g.boss.atk, Bb = g.boss, warnK = clamp(A.t / A.warn, 0, 1), on = A.t >= A.warn, zA = wz(Bb.y), zB = wz(CONFIG.LEADER_Y + 60), lw = LANE_W / U3;
     A.lanes.forEach((l, i) => {
       const m = R.laneWarn[i]; if (!on) { m.visible = true; m.position.set(wx(laneX(l)), 0.04, (zA + zB) / 2); m.scale.set(lw * 0.96, zB - zA, 1); m.material.opacity = 0.12 + 0.3 * warnK * (0.6 + 0.4 * Math.sin(g.t * 20)); }

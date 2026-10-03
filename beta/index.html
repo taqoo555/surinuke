@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v115';
+const VERSION = 'v116';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -2368,7 +2368,7 @@ function init3D() {
     
     const boss = new T.Group();
     
-    const bossBody = new T.Mesh(RBox(2.4, 1.6, 1.8), M(0xe8c9a0)); bossBody.position.y = 0.8; bossBody.castShadow = true; boss.add(bossBody);
+    const bossBody = new T.Mesh(RBox(2.4, 1.6, 1.8, 0.14), M(0xe8c9a0)); bossBody.position.y = 0.8; bossBody.castShadow = true; boss.add(bossBody);
     
     const roofSh = new T.Shape(); roofSh.moveTo(-1.5, 0); roofSh.lineTo(1.5, 0); roofSh.lineTo(0, 1.2); roofSh.lineTo(-1.5, 0);
     const roofGeo = new T.ExtrudeGeometry(roofSh, { depth: 1.9, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 3 }); roofGeo.translate(0, 0, -0.95);
@@ -2448,8 +2448,9 @@ function init3D() {
     
     const tower = new T.Group();
     const twMat = M(0xc9d7e8, { map: winTex });
-    const tw = new T.Mesh(RBox(2.2, 4.4, 1.8), twMat); tw.position.y = 2.2; tower.add(tw);
-    const twRoof = new T.Mesh(RBox(2.4, 0.25, 2.0), M(0x8c95a8)); twRoof.position.y = 4.5; tower.add(twRoof);
+    
+    const tw = new T.Mesh(RBox(2.2, 4.4, 1.8, 0.14), twMat); tw.position.y = 2.2; tower.add(tw);
+    const twRoof = new T.Mesh(RBox(2.4, 0.3, 2.0, 0.08), M(0x8c95a8)); twRoof.position.y = 4.42; tower.add(twRoof);
     for (const [wx6, wy6] of [[-0.6, 3.6], [0.1, 3.0], [0.6, 3.8], [-0.4, 2.4]]) { const glow = new T.Mesh(new T.BoxGeometry(0.45, 0.4, 0.05), B(0xffa030)); glow.position.set(wx6, wy6, 0.92); tower.add(glow); }
     const towerFlames = mkFlames(tower, [[0, 5.2, 0, 1.3, 0xff6a1a], [-0.7, 4.9, 0.2, 0.9, 0xff3b1a], [0.7, 4.9, -0.1, 1.0, 0xff7a1a], [-0.6, 4.0, 1.0, 0.5, 0xffc21a], [0.6, 4.2, 1.0, 0.5, 0xffc21a], [0.1, 3.4, 1.0, 0.45, 0xff7a1a]]);
     for (const [fx, fy, fz, fs, col] of [[-1.25, 1.2, 0.3, 0.9, 0xff6a1a], [1.25, 1.6, -0.2, 0.9, 0xff3b1a], [-1.2, 2.8, -0.4, 0.7, 0xffc21a], [1.2, 3.0, 0.5, 0.7, 0xff7a1a], [0, 0.5, 1.0, 0.6, 0xff7a1a]]) {

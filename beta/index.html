@@ -1442,12 +1442,12 @@ function sfx(k) {
     case 'tick': tone(392, 0.12, 'triangle', 0.45); break;   
     case 'siren': [0, 1, 2, 3].forEach(i => setTimeout(() => tone(i % 2 ? 440 : 587, 0.24, 'square', 0.2), i * 250)); break;   
     case 'spray': noise(1.1, 0.35, 1800); tone(300, 0.5, 'sine', 0.16, 120); break;   
-    case 'pump': noise(0.5, 0.07, 2600); break;
+    case 'pump': noise(0.5, 0.07, 2600); break;   
     
     case 'hit': if (now - lastHit < 70) return; lastHit = now; tone(210 + Math.random() * 70, 0.05, 'triangle', 0.16, 90); break;
-    case 'water': noise(0.45, 0.05, 2200); break;
+    case 'water': noise(0.45, 0.05, 2200); break;   
     
-    case 'dash': if (now - lastDash < 150) return; lastDash = now; tone(520, 0.09, 'sine', 0.1, 900); break;   
+    case 'dash': if (now - lastDash < 150) return; lastDash = now; tone(520, 0.09, 'sine', 0.1, 900); break;
     case 'go': tone(523, 0.1, 'triangle', 0.5); setTimeout(() => tone(784, 0.25, 'triangle', 0.5), 70); break;
   }
 }

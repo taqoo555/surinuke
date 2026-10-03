@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v98';
+const VERSION = 'v99';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -2194,6 +2194,12 @@ function init3D() {
     const haloIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xff7a2a, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }), 500);
     for (const im of [puffIM, sparkIM, haloIM]) { im.frustumCulled = false; im.renderOrder = 5; scene3.add(im); }
     puffIM.setColorAt(0, new T.Color(0xffffff)); sparkIM.setColorAt(0, new T.Color(0xffb030));
+    
+    const rockIM = new T.InstancedMesh(new T.IcosahedronGeometry(1, 0), new T.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), 120);
+    rockIM.setColorAt(0, new T.Color(0x8a3a1e)); rockIM.castShadow = true;
+    const rockEyeW = new T.InstancedMesh(new T.SphereGeometry(0.2, 8, 6), B(0xfff4e0), 240), rockEyeB = new T.InstancedMesh(new T.SphereGeometry(0.1, 6, 5), B(0x1a0a04), 240);
+    for (const im of [rockIM, rockEyeW, rockEyeB]) { im.frustumCulled = false; im.count = 0; scene3.add(im); }
+    Object.assign(R3, { rockIM, rockEyeW, rockEyeB });
     for (const im of [unitBody, unitHead, unitBrim, unitStripe, unitTank, enemyBody, enemyHorn, enemyEye, bulletIM, glowIM]) { im.frustumCulled = false; scene3.add(im); }
     enemyBody.setColorAt(0, new T.Color(0xff7a1a));   
     
@@ -2590,11 +2596,24 @@ function render3D(g, sx, sy) {
     d.rotation.set(0, 0, 0); d.quaternion.copy(R.cam.quaternion); d.position.set(wx(x), r * 1.1, wz(y)); d.scale.set(r * 3.4 * fl, r * 3.4 * fl, 1); d.updateMatrix(); R.haloIM.setMatrixAt(n, d.matrix); d.quaternion.set(0, 0, 0, 1);   
     n++;
   };
+  let nr = 0;
+  const rock = (x, y, r, heat, ph, flash) => {   
+    if (nr >= 120) return;
+    const bob = Math.abs(Math.sin(g.t * 6 + ph)) * r * 0.25, R0 = r * 1.15;
+    d.rotation.set(Math.sin(g.t * 2 + ph) * 0.2, ph, Math.sin(g.t * 3 + ph) * 0.15); d.position.set(wx(x), R0 + bob, wz(y)); d.scale.set(R0, R0 * 0.92, R0); d.updateMatrix(); R.rockIM.setMatrixAt(nr, d.matrix);
+    if (flash) R.col.setHex(0xffffff); else R.col.setRGB(0.36 + 0.5 * heat, 0.32 + 0.02 * heat, 0.32 - 0.24 * heat); R.rockIM.setColorAt(nr, R.col);   
+    d.rotation.set(0, 0, 0);
+    for (const sgn of [-1, 1]) { const ex = wx(x) + sgn * R0 * 0.38, ey = R0 * 1.15 + bob, ez = wz(y) + R0 * 0.82;
+      d.position.set(ex, ey, ez); d.scale.set(R0 * 0.9, R0 * 0.9, R0 * 0.9); d.updateMatrix(); R.rockEyeW.setMatrixAt(nr * 2 + (sgn > 0 ? 1 : 0), d.matrix);
+      d.position.set(ex, ey, ez + R0 * 0.12); d.updateMatrix(); R.rockEyeB.setMatrixAt(nr * 2 + (sgn > 0 ? 1 : 0), d.matrix); }
+    nr++;
+  };
   for (const e of g.enemies) {
     if (e.kind === 'tank') { const tk = R.tanks.get(), k = 1.1; tk.position.set(wx(e.x), 0, wz(e.y)); tk.scale.set(k, k, k); tk.userData.body.color.setHex(e.flash > 0 ? 0xffffff : 0x6f8fb0); continue; }
     if (e.kind === 'hydrant') { const hy = R.hydrants.get(), k = e.r / U3 * 2.8; hy.position.set(wx(e.x), 0, wz(e.y)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(e.flash > 0 ? 0xffffff : 0xd8262a); continue; }
     const pk = e.st === 'wind' ? 1.25 + 0.15 * Math.sin(g.t * 40) : e.puff > 0 ? 1 + e.puff * 1.6 : 1;   
     if (e.puff > 0) e.puff -= 1 / 60;
+    if (e.kind === 'lava') { rock(e.x, e.y, e.r / U3 * 1.1, e.hp / e.max, e.x * 0.37, e.flash > 0); continue; }
     flame(e.x, e.y, e.r / U3 * 1.1 * pk, e.kind === 'lava' ? lavaCol(e) : e.purple && e.kind === 'grunt' ? ECOL3.purple : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37, e.pop > 0 ? Math.sin(Math.PI * (1 - e.pop / 0.35)) * 1.6 : 0);
   }
   
@@ -2603,7 +2622,7 @@ function render3D(g, sx, sy) {
   for (const { sp, ahead } of AH.squads) for (const [li, lane] of sp.lanes.entries()) {
     if (sp.spec) {   
       const S = sp.spec[li], cx = laneX(lane);
-      for (const u of S.units) flame(cx + u.dx, u.dy - ahead, KIND_R[u.kind] / U3 * 1.1, u.kind === 'lava' ? 0xff4a10 : u.kind === 'spread' ? ECOL3.spread : ECOL3[u.kind] || 0xff7a1a, u.dx + u.dy);
+      for (const u of S.units) { if (u.kind === 'lava') { rock(cx + u.dx, u.dy - ahead, KIND_R.lava / U3 * 1.1, 1, u.dx + u.dy); continue; } flame(cx + u.dx, u.dy - ahead, KIND_R[u.kind] / U3 * 1.1, u.kind === 'spread' ? ECOL3.spread : ECOL3[u.kind] || 0xff7a1a, u.dx + u.dy); }
       if (S.tank) { const tk = R.tanks.get(); tk.position.set(wx(cx), 0, wz(40 - ahead)); tk.scale.set(1.1, 1.1, 1.1); tk.userData.body.color.setHex(0x6f8fb0); }
       if (S.hydrant) { const side = lane === 2 ? 1 : 0, hy = R.hydrants.get(), k = 10 / U3 * 2.8; hy.position.set(wx(side ? CONFIG.ROAD_R - 12 : CONFIG.ROAD_L + 12), 0, wz(40 - ahead)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(0xd8262a); }
       continue;
@@ -2620,6 +2639,8 @@ function render3D(g, sx, sy) {
   }
   R.hydrants.end(); R.tanks.end();
   R.enemyBody.count = R.enemyHorn.count = R.glowIM.count = R.haloIM.count = n; R.enemyEye.count = h;
+  R.rockIM.count = nr; R.rockEyeW.count = R.rockEyeB.count = nr * 2;
+  for (const im of [R.rockIM, R.rockEyeW, R.rockEyeB]) im.instanceMatrix.needsUpdate = true; if (R.rockIM.instanceColor) R.rockIM.instanceColor.needsUpdate = true;
   R.enemyBody.instanceMatrix.needsUpdate = R.enemyHorn.instanceMatrix.needsUpdate = R.enemyEye.instanceMatrix.needsUpdate = R.glowIM.instanceMatrix.needsUpdate = R.haloIM.instanceMatrix.needsUpdate = true;
   if (R.enemyBody.instanceColor) R.enemyBody.instanceColor.needsUpdate = true;
   

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v94';
+const VERSION = 'v95';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -70,7 +70,7 @@ const CONFIG = {
   
   BALL_SENSE: 150, BALL_WIND: 0.4, BALL_DASH: 330,
   
-  SQUAD_MAX: 30,
+  SQUAD_MAX: 30, GIM_SQUAD_MIN: 18,
   PLAN_HP: 1.5, PLAN_HP_UP: 0.12,   
   BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
   SPREAD_HP: 7, SPREAD_EVERY: 0.9, SPREAD_MAX: 8,   
@@ -456,7 +456,8 @@ function squadSpec(g, sp, k) {
   
   if (sp.first) { row('grunt', 2, y); return { units: out, hydrant: 0, tank: 0, first: true }; }
   if (P.kinds.length === 1 && P.kinds[0] === 'grunt') {   
-    const cols = Math.min(cols0, 6), rows = Math.max(1, Math.floor(n / cols));
+    
+    const cols = 6, rows = Math.max(1, Math.floor(Math.max(n, C.GIM_SQUAD_MIN) / cols));
     for (let r = 0; r < rows; r++) y = row('grunt', cols, y) + 2 * KIND_R.grunt + 6 - 19;
   } else if (P.kinds.length === 1) {
     const K = P.kinds[0], cnt = many[K], per = K === 'ball' ? 3 : 2;

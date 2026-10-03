@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v97';
+const VERSION = 'v98';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -68,7 +68,8 @@ const CONFIG = {
   HYD_JET: 1.4,                   
   HYD_WAVE: 380, HYD_BAND: 110,   
   
-  BALL_SENSE: 150, BALL_WIND: 0.4, BALL_DASH: 330,
+  
+  BALL_SENSE: 260, BALL_WIND: 0.4, BALL_DASH: 330,
   
   SQUAD_MAX: 30, GIM_SQUAD_MIN: 18,
   PLAN_HP: 1.5, PLAN_HP_UP: 0.12,   
@@ -451,7 +452,7 @@ const KIND_R = { grunt: 9, brute: 19, ball: 8, lava: 15, spread: 13 };
 function squadSpec(g, sp, k) {
   const P = planOf(g.level), C = CONFIG, cols0 = sp.cols || 6, n = Math.min(C.SQUAD_MAX, sp.rows * cols0), out = [];
   const W = LANE_W * 0.8, row = (kind, cnt, y) => { for (let i = 0; i < cnt; i++) out.push({ kind, dx: -W / 2 + (i + 0.5) * W / cnt, dy: y }); return y - KIND_R[kind] * 2 - 6; };
-  const many = { brute: Math.max(1, Math.min(3, Math.round(n / 12))), ball: Math.max(2, Math.min(5, Math.round(n / 5))), lava: Math.max(1, Math.min(3, Math.round(n / 9))), spread: Math.max(1, Math.min(2, Math.round(n / 12))) };
+  const many = { brute: Math.max(1, Math.min(3, Math.round(n / 12))), ball: Math.max(3, Math.min(8, Math.round(n / 3))), lava: Math.max(1, Math.min(3, Math.round(n / 9))), spread: Math.max(1, Math.min(2, Math.round(n / 12))) };
   let y = -30;
   
   if (sp.first) { row('grunt', 2, y); return { units: out, hydrant: 0, tank: 0, first: true }; }

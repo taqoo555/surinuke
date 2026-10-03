@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v104';
+const VERSION = 'v105';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -1136,7 +1136,11 @@ function update(g, dt) {
     const stop = C.LEADER_Y - C.BOSS_STOP;
     if (B.y < stop) B.y = Math.min(stop, B.y + scroll * dt);
     B.ramY = 0;
-    if (B.atk && B.atk.mv === 'ram') { const A = B.atk, t1 = A.t - A.warn; B.ramY = t1 < 0 ? -Math.sin(Math.min(1, A.t / A.warn) * Math.PI) * 12 : t1 < C.ATK_ON ? (t1 / C.ATK_ON) * (C.BOSS_STOP - 40) : Math.max(0, 1 - (t1 - C.ATK_ON) / 0.4) * (C.BOSS_STOP - 40); }   
+    
+    B.turn = 0;
+    if (B.atk && B.atk.mv === 'ram') { const A = B.atk, t1 = A.t - A.warn, back = t1 - C.ATK_ON - 0.15;
+      B.turn = t1 < 0 ? Math.min(1, A.t / Math.min(0.5, A.warn * 0.6)) : back > 0.5 ? Math.max(0, 1 - (back - 0.5) / 0.3) : 1;
+      B.ramY = t1 < 0 ? -Math.sin(Math.min(1, A.t / A.warn) * Math.PI) * 12 : t1 < C.ATK_ON ? (t1 / C.ATK_ON) * C.BOSS_STOP : back < 0 ? C.BOSS_STOP : Math.max(0, 1 - back / 0.5) * C.BOSS_STOP; }   
     
     
     if (!g.halt && B.y >= stop) { g.halt = true; g.cutT = C.CUT_T; if (!SIM) { sfx('siren'); shake(6); } }
@@ -1162,14 +1166,14 @@ function update(g, dt) {
       if (B.atk) {   
         const A = B.atk; A.t += dt;
         if (A.mv === 'ram') { const L = laneX(A.lanes[0]), k = clamp(A.t / A.warn, 0, 1); B.x = A.x0 + (L - A.x0) * Math.min(1, k * 2); }   
-        if (!A.hit && A.t >= A.warn) {
+        if (!A.hit && A.t >= A.warn + (A.mv === 'ram' ? C.ATK_ON : 0)) {   
           A.hit = true;
           let n = 0; for (const u of g.units) if (A.lanes.includes(laneOf(u.x))) n += u.w;
           n = Math.min(Math.round(n * C.ATK_HIT), Math.ceil(g.N * C.ATK_MAX));
           if (!SIM) { sfx(A.mv === 'beam' ? 'beam' : 'thud'); if (R3.on) for (const l of A.lanes) fxSparks(laneX(l), C.LEADER_Y, 8); }
           if (n > 0) { loseUnits(g, n, 'boss', laneX(A.lanes[0]), C.LEADER_Y - 20); if (g.over) return; }
         }
-        if (A.t >= A.warn + C.ATK_ON + (A.mv === 'ram' ? 0.4 : 0)) B.atk = null;
+        if (A.t >= A.warn + C.ATK_ON + (A.mv === 'ram' ? 1.0 : 0)) B.atk = null;
       }
     }
   }
@@ -2812,7 +2816,7 @@ function render3D(g, sx, sy) {
   } else if (show) {
     for (const bf of R.bosses[bk].userData.flames) bf.f.scale.set(1, 1, 1);
     const r = Bs.r / U3, bo = R.bosses[bk], u = bo.userData;
-    bo.position.set(wx(Bs.x), 0, wz(Bs.y + (Bs.ramY || 0))); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 : 0;      
+    bo.position.set(wx(Bs.x), 0, wz(Bs.y + (Bs.ramY || 0))); bo.scale.set(r, r, r); bo.rotation.y = bk === 'truck' ? Math.PI / 2 * (1 - (Bs.turn || 0)) : 0;      
     R.col.setHex(u.base); if (Bs.rage) R.col.lerp(R.col2.setHex(0xff6a5a), 0.45 + 0.15 * Math.sin(g.t * 10));   
     u.flash.color.copy(Bs.flash > 0 ? R.col2.setHex(0xffffff) : R.col);   
     const fk = Bs.rage ? 1.4 : 1;
@@ -2861,7 +2865,7 @@ function drawLabels3D(g) {
     for (let i = 0; i < mx; i++) { ctx.fillStyle = i < g.guardHp ? '#6fc3ff' : 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.arc(px + (i - (mx - 1) / 2) * 9, py - 6, 3.5, 0, 6.28); ctx.fill(); }
   }
   const Bs = g.boss;
-  if (Bs && Bs.hp > 0 && !(g.cutT > 0)) { const [px, py, k] = P3(Bs.x, Bs.y, Bs.r / U3 * 3.9);    txt(bossText(Bs), px, py, 24 * k, '#ffd0a0'); }
+  if (Bs && Bs.hp > 0 && !(g.cutT > 0)) { const [px, py, k] = P3(Bs.x, Bs.y + (Bs.ramY || 0), Bs.r / U3 * 3.9);       txt(bossText(Bs), px, py, 24 * k, '#ffd0a0'); }
   
   if (!g.over || g.N > 0) { const [px, py] = P3(g.lx, CONFIG.LEADER_Y + g.cDepth + (g.lvRanged ? CONFIG.SPECIAL_GAP + 24 : 18), 0.05); txt(String(g.N), px, py, 20, '#fff'); }
 }

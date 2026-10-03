@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v105';
+const VERSION = 'v106';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -571,15 +571,15 @@ function buildStage1(g) {
     { dist: 60, kind: 'row', free: { parts: [fix(-5), fix(25), fix(-5)], cuts: [cut(180, -1, 120), cut(180, 1, 120)] } },
     { dist: 290, kind: 'squad', lanes: [0, 1, 2], rows: C.OPEN1[0], cols: C.OPEN1[1], hpMul: C.OPEN1[2], brute: true },
     
-    { dist: 560, kind: 'squad', lanes: [1], rows: 2, cols: 4, hpMul: 0.3 },
-    { dist: 850, kind: 'row', free: { parts: [fix(-C.TUTOR_RED[0])], cuts: [] } },
-    { dist: 1100, kind: 'squad', lanes: [0, 2], rows: 2, cols: 3, hpMul: 0.3 },
-    { dist: 1350, kind: 'row', free: { parts: [fix(15), fix(-12)], cuts: [cut(L1, 0, 0)] } },
-    { dist: 1575, kind: 'squad', lanes: [1, 2], rows: 2, cols: 3, hpMul: 0.35, brute: true },
     
-    { dist: 1800, kind: 'row', free: { parts: [fix(-15), { type: 'mul', v: 2, good: true, hitT: 0 }], cuts: [cut(L2, 0, 0)] } },
-    { dist: 2020, kind: 'squad', lanes: [0, 1, 2], rows: 2, cols: 4, hpMul: 0.5 },
-    { dist: 2020 + C.TRACK_GAP * C.BOSS_AFTER, kind: 'boss' },
+    { dist: 520, kind: 'row', free: { parts: [fix(-C.TUTOR_RED[0])], cuts: [] } },
+    { dist: 770, kind: 'squad', lanes: [0, 2], rows: 2, cols: 3, hpMul: 0.3 },
+    { dist: 1020, kind: 'row', free: { parts: [fix(15), fix(-12)], cuts: [cut(L1, 0, 0)] } },
+    { dist: 1245, kind: 'squad', lanes: [1, 2], rows: 2, cols: 3, hpMul: 0.35, brute: true },
+    
+    { dist: 1470, kind: 'row', free: { parts: [fix(-15), { type: 'mul', v: 2, good: true, hitT: 0 }], cuts: [cut(L2, 0, 0)] } },
+    { dist: 1690, kind: 'squad', lanes: [0, 1, 2], rows: 2, cols: 4, hpMul: 0.5 },
+    { dist: 1690 + C.TRACK_GAP * C.BOSS_AFTER, kind: 'boss' },
   ];
   return T;
 }

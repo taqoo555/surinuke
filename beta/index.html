@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v114';
+const VERSION = 'v115';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -71,7 +71,7 @@ const CONFIG = {
   
   BALL_SENSE: 260, BALL_WIND: 0.4, BALL_DASH: 330,
   
-  SQUAD_MAX: 30, GIM_SQUAD_MIN: 18,
+  SQUAD_MAX: 30, GIM_SQUAD_MIN: 18, SPREAD_BACK: 70,
   PLAN_HP: 1.5, PLAN_HP_UP: 0.12,   
   BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
   SPREAD_HP: 7, SPREAD_EVERY: 0.9, SPREAD_MAX: 8,   
@@ -457,7 +457,7 @@ const KIND_R = { grunt: 9, brute: 19, ball: 8, lava: 15, spread: 13 };
 function squadSpec(g, sp, k) {
   const P = planOf(g.level), C = CONFIG, cols0 = sp.cols || 6, n = Math.min(C.SQUAD_MAX, sp.rows * cols0), out = [];
   const W = LANE_W * 0.8, row = (kind, cnt, y) => { for (let i = 0; i < cnt; i++) out.push({ kind, dx: -W / 2 + (i + 0.5) * W / cnt, dy: y }); return y - KIND_R[kind] * 2 - 6; };
-  const many = { brute: Math.max(1, Math.min(3, Math.round(n / 12))), ball: Math.max(3, Math.min(8, Math.round(n / 3))), lava: Math.max(1, Math.min(3, Math.round(n / 9))), spread: Math.max(1, Math.min(2, Math.round(n / 12))) };
+  const many = { brute: Math.max(1, Math.min(3, Math.round(n / 12))), ball: Math.max(3, Math.min(8, Math.round(n / 3))), lava: Math.max(1, Math.min(3, Math.round(n / 9))), spread: Math.max(2, Math.min(4, Math.round(n / 6))) };
   let y = -30;
   
   if (sp.first) { row('grunt', 2, y); return { units: out, hydrant: 0, tank: 0, first: true }; }
@@ -467,12 +467,14 @@ function squadSpec(g, sp, k) {
     for (let r = 0; r < rows; r++) y = row('grunt', cols, y) + 2 * KIND_R.grunt + 6 - 19;
   } else if (P.kinds.length === 1) {
     const K = P.kinds[0], cnt = many[K], per = K === 'ball' ? 3 : 2;
-    for (let left = cnt; left > 0; left -= per) y = row(K, Math.min(per, left), y);
+    
+    for (let left = cnt; left > 0; left -= per) { y = row(K, Math.min(per, left), y); if (K === 'spread') y -= C.SPREAD_BACK; }
   } else {
     const front = P.kinds[0];
     y = row(front, Math.max(1, Math.ceil(many[front] / 2)), y);   
     if (P.grunts) { const cols = Math.min(cols0, 5), rows = Math.max(1, Math.min(2, Math.floor(n / 3 / cols))); for (let r = 0; r < rows; r++) y = row('grunt', cols, y) + 2 * KIND_R.grunt + 6 - 19; }
-    for (const K of P.kinds.slice(1)) y = row(K, Math.max(1, Math.ceil(many[K] / (P.kinds.length > 2 ? 3 : 2))), y);
+    
+    for (const K of P.kinds.slice(1)) { if (K === 'spread') y -= C.SPREAD_BACK; y = row(K, Math.max(1, Math.ceil(many[K] / (P.kinds.length > 2 ? 3 : 2))), y); }
   }
   
   const sc = stageOf(g.level).scene, gim = k === 0 && !sp.noGim && (n >= 4 || P.hydrant || P.tank);

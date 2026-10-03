@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v92';
+const VERSION = 'v93';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -67,6 +67,10 @@ const CONFIG = {
   TANK_RATE: 0.5, TANK_HP: 2, TANK_FLOOD: 520, TANK_R: 120,      
   HYD_JET: 1.4,                   
   HYD_WAVE: 380, HYD_BAND: 110,   
+  
+  BALL_SENSE: 150, BALL_WIND: 0.4, BALL_DASH: 330,
+  
+  SQUAD_MAX: 30,
   BALL_HP: 3, BALL_VY: 25, BALL_VX: 75,   
   SPREAD_HP: 7, SPREAD_EVERY: 0.9, SPREAD_MAX: 8,   
   LAVA_HP: 14, LAVA_BITE: 5,      
@@ -243,8 +247,10 @@ const rangedEvery = lv => Math.max(0.35, CONFIG.RANGED_EVERY - (lv - 1) * 0.1);
 const rangedDmg = (g, lv) => CONFIG.RANGED_DMG * g.power * (1 + 0.3 * (lv - 1));        
 
 
+const courseSeed = level => level === 1 ? 20260929 : (20261003 + level * 7919) >>> 0;
 function newRun(level, m, seed) {
-  rng = mulberry32(seed == null ? (level === 1 ? 20260929 : Date.now() & 0xffffffff) : seed);   
+  
+  rng = mulberry32(seed == null ? courseSeed(level) : seed);
   const C = CONFIG;
   const g = {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
@@ -420,6 +426,61 @@ const STAGES = [
 const MIX = [{ ball: 0, spread: 0, lava: 0 }, { ball: 0.4, spread: 0, lava: 0 }, { ball: 0.2, spread: 0.4, lava: 0 },
              { ball: 0.2, spread: 0, lava: 0.4 }, { ball: 0, spread: 0.4, lava: 0.3 }, { ball: 0.3, spread: 0.3, lava: 0.3 }];
 function stageOf(level) { return STAGES[(level - 1) % STAGES.length]; }
+
+const PLAN = {
+  2: { kinds: ['grunt'], hydrant: 1 },
+  3: { kinds: ['grunt'], tank: 1 },
+  4: { kinds: ['brute'], hp: 0.45 },
+  5: { kinds: ['ball'], hp: 0.8 },
+  6: { kinds: ['lava'], hp: 1.3 },
+  7: { kinds: ['spread'], hp: 0.6 },
+  8: { kinds: ['lava', 'spread'], grunts: true, hp: 0.45 },
+  9: { kinds: ['brute', 'ball'], grunts: true, hp: 0.7 },
+  10: { kinds: ['lava', 'brute', 'spread', 'ball'], grunts: true, hp: 0.6 },
+};
+const PLAN_LATE = [['lava', 'spread'], ['brute', 'ball'], ['ball', 'spread'], ['lava', 'ball'], ['brute', 'spread'], ['lava', 'brute'], ['spread', 'ball', 'lava'], ['brute', 'ball', 'spread'], ['lava', 'brute', 'spread', 'ball']];
+function planOf(level) {
+  if (level <= 1) return null;
+  if (PLAN[level]) return PLAN[level];
+  if (level % 10 === 0) return { kinds: ['lava', 'brute', 'spread', 'ball'], grunts: true, hp: 0.6 };   
+  return { kinds: PLAN_LATE[(level - 11) % PLAN_LATE.length], grunts: true, hp: 0.7 };
+}
+const KIND_R = { grunt: 9, brute: 19, ball: 8, lava: 15, spread: 13 };
+
+function squadSpec(g, sp, k) {
+  const P = planOf(g.level), C = CONFIG, cols0 = sp.cols || 6, n = Math.min(C.SQUAD_MAX, sp.rows * cols0), out = [];
+  const W = LANE_W * 0.8, row = (kind, cnt, y) => { for (let i = 0; i < cnt; i++) out.push({ kind, dx: -W / 2 + (i + 0.5) * W / cnt, dy: y }); return y - KIND_R[kind] * 2 - 6; };
+  const many = { brute: Math.max(1, Math.min(3, Math.round(n / 12))), ball: Math.max(2, Math.min(5, Math.round(n / 5))), lava: Math.max(1, Math.min(3, Math.round(n / 9))), spread: Math.max(1, Math.min(2, Math.round(n / 12))) };
+  let y = -30;
+  if (P.kinds.length === 1 && P.kinds[0] === 'grunt') {   
+    const cols = Math.min(cols0, 6), rows = Math.max(1, Math.floor(n / cols));
+    for (let r = 0; r < rows; r++) y = row('grunt', cols, y) + 2 * KIND_R.grunt + 6 - 19;
+  } else if (P.kinds.length === 1) {
+    const K = P.kinds[0], cnt = many[K], per = K === 'ball' ? 3 : 2;
+    for (let left = cnt; left > 0; left -= per) y = row(K, Math.min(per, left), y);
+  } else {
+    const front = P.kinds[0];
+    y = row(front, Math.max(1, Math.ceil(many[front] / 2)), y);   
+    if (P.grunts) { const cols = Math.min(cols0, 5), rows = Math.max(1, Math.min(2, Math.floor(n / 3 / cols))); for (let r = 0; r < rows; r++) y = row('grunt', cols, y) + 2 * KIND_R.grunt + 6 - 19; }
+    for (const K of P.kinds.slice(1)) y = row(K, Math.max(1, Math.ceil(many[K] / (P.kinds.length > 2 ? 3 : 2))), y);
+  }
+  const sc = stageOf(g.level).scene, gim = k === 0 && (n >= 4 || P.hydrant || P.tank);
+  return { units: out, hydrant: gim && (P.hydrant || (sc === 'home' && rng() < 0.3)) ? 1 : 0, tank: gim && (P.tank || (sc === 'office' && rng() < 0.3)) ? 1 : 0 };
+}
+function mkEnemy(g, kind, lane, x, y, em) {
+  const C = CONFIG;
+  if (kind === 'grunt') return { kind, lane, x, y, r: 9, hp: C.GRUNT_HP * em, max: C.GRUNT_HP * em, vy: C.ENEMY_VY + rr(-3, 3), bite: 1, hk: rr(0.6, 1.2), wob: rr(0.5, 2.5), wf: rr(1.2, 3), ph: rr(0, 6.28) };
+  if (kind === 'brute') return { kind, lane, x, y, r: 19, hp: C.BRUTE_HP * em, max: C.BRUTE_HP * em, vy: C.ENEMY_VY, bite: 6, hk: 0.5 };
+  if (kind === 'ball') return { kind, lane, x, y, r: 8, hp: C.BALL_HP * em, max: C.BALL_HP * em, vy: C.ENEMY_VY, vx: (rng() < 0.5 ? -1 : 1) * C.BALL_VX, bite: 2, hk: 0, ph: rr(0, 6.28), st: 'drift' };
+  if (kind === 'spread') return { kind, lane, x, y, r: 13, hp: C.SPREAD_HP * em, max: C.SPREAD_HP * em, vy: C.ENEMY_VY, bite: 3, hk: 0.8, ph: rr(0, 6.28), purple: true, kids: 0, kt: C.SPREAD_EVERY };
+  return { kind: 'lava', lane, x, y, r: 15, hp: C.LAVA_HP * em, max: C.LAVA_HP * em, vy: C.ENEMY_VY, bite: C.LAVA_BITE, hk: 0.7, ph: rr(0, 6.28) };
+}
+function spawnSpec(g, lane, spec, soft) {
+  const C = CONFIG, em = g.mul * (soft ? 0.5 : 1) * easeOf(g.level) * (planOf(g.level).hp || 1), cx = laneX(lane);   
+  for (const u of spec.units) g.enemies.push(mkEnemy(g, u.kind, lane, cx + u.dx + rr(-2, 2), u.dy, em));
+  if (spec.tank) g.enemies.push({ kind: 'tank', lane, x: cx, y: 40, r: 16, hp: C.TANK_HITS, max: C.TANK_HITS, vy: 0, bite: 0, hk: 0, fixed: true });
+  if (spec.hydrant) { const side = lane === 2 ? 1 : 0; g.enemies.push({ kind: 'hydrant', lane: side ? 2 : 0, x: side ? C.ROAD_R - 12 : C.ROAD_L + 12, y: 40, r: 10, hp: C.HYD_HITS, max: C.HYD_HITS, vy: 0, bite: 0, hk: 0, fixed: true }); }
+}
 function mixOf(g) {
   if (g.level < 2) return null;
   const m = MIX[(g.level - 1) % MIX.length], k = g.level > 6 ? 1.2 : 1;
@@ -792,31 +853,35 @@ function spreadFlame(g, e, dt) {
   e.kt -= dt; if (e.kt > 0) return;
   e.kt = CONFIG.SPREAD_EVERY; e.kids++;
   const hp = CONFIG.GRUNT_HP * g.mul * 0.8, a = rr(0, 6.28);
+  
+  e.puff = 0.25;
   g.enemies.push({ kind: 'grunt', purple: true, lane: e.lane, x: clamp(e.x + Math.cos(a) * 18, CONFIG.ROAD_L + 8, CONFIG.ROAD_R - 8), y: e.y + 6 + Math.abs(Math.sin(a)) * 10, r: 8, hp, max: hp, vy: CONFIG.ENEMY_VY, bite: 1, hk: rr(0.6, 1.2), ph: rr(0, 6.28) });
-  if (!SIM && R3.on) fxSparks(e.x, e.y, 3);
+  { const kid = g.enemies[g.enemies.length - 1], tx = kid.x, ty = kid.y; kid.x = e.x; kid.y = e.y; kid.pop = 0.35; kid.pvx = (tx - e.x) / 0.35; kid.pvy = (ty - e.y) / 0.35 + rr(10, 30); }
+  if (!SIM && R3.on) { fxSparks(e.x, e.y, 6); fxSplash(e.x, e.y, 0); }
 }
 function trackFlow(g, dt, scroll) {
-  if (!g.track) { g.track = buildTrack(g); g.trackEnd = g.track[g.track.length - 1].dist; g.dist = CONFIG.HEAD_START; }   
+  if (!g.track) { g.track = buildTrack(g); g.trackEnd = g.track[g.track.length - 1].dist; g.dist = CONFIG.HEAD_START;
+    if (planOf(g.level)) for (const sp of g.track) if (sp.kind === 'squad') sp.spec = sp.lanes.map((l, k) => squadSpec(g, sp, k)); }      
   if (!g.boss) g.dist += scroll * dt;
   while (g.ti < g.track.length && g.dist >= g.track[g.ti].dist) {
     const sp = g.track[g.ti++];
     const over = Math.max(0, g.dist - sp.dist);   
     if (sp.kind === 'row') { const row = { y: -40 + over, lanes: sp.lanes || [], free: sp.free, done: false, guard: sp.guard }; row.segs = rowSegs(row, g.t); g.rows.push(row); }
     else if (sp.kind === 'wall') g.walls.push({ y: -40 + over, len: sp.len, lane: null });
-    else if (sp.kind === 'squad') { const n0 = g.enemies.length; sp.lanes.forEach((l, k) => spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === (sp.lanes.length === 1 ? 0 : 1), sp.soft, k === 0 && sp.mix));
+    else if (sp.kind === 'squad') { const n0 = g.enemies.length; sp.lanes.forEach((l, k) => sp.spec ? spawnSpec(g, l, sp.spec[k], sp.soft) : spawnSquad(g, l, sp.rows, sp.cols, sp.brute && k === (sp.lanes.length === 1 ? 0 : 1), sp.soft, k === 0 && sp.mix));
       for (let i = n0; i < g.enemies.length; i++) { const e = g.enemies[i]; e.y += over; if (sp.hpMul) { e.hp *= sp.hpMul; e.max *= sp.hpMul; } } }   
     else if (sp.kind === 'boss') spawnBoss(g);   
   }
 }
 
 function bossKindOf(level) {
-  if (level % 6 === 0) return (level / 6) % 2 === 1 ? 'majin' : 'dragon';
+  if (level % 10 === 0) return (level / 10) % 2 === 1 ? 'majin' : 'dragon';   
   const sc = stageOf(level).scene;
   return sc === 'bridge' ? 'truck' : sc === 'office' ? 'tower' : 'house';   
 }
 function spawnBoss(g) {
   
-  let hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? CONFIG.STAGE1_BOSS : easeOf(g.level)) * (g.level % 6 === 0 ? CONFIG.BIG_BOSS : 1);   
+  let hp = CONFIG.BOSS_HP * g.mul * (g.level === 1 ? CONFIG.STAGE1_BOSS : easeOf(g.level)) * (g.level % 10 === 0 ? CONFIG.BIG_BOSS : 1);   
   
   const W = weapon(g), dps = g.N * g.power * g.rateMul * W.rate * W.dmg + (g.lvRanged ? rangedDmg(g, g.lvRanged) / rangedEvery(g.lvRanged) : 0);
   hp = Math.max(hp, dps * CONFIG.BOSS_MIN_SEC);
@@ -989,7 +1054,13 @@ function update(g, dt) {
   for (const e of g.enemies) {
     
     if (e.fixed) { e.y += scroll * dt; if (e.flash > 0) e.flash -= dt; continue; }   
-    const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth;
+    if (e.kind === 'ball' && e.st) {   
+      if (e.st === 'drift' && e.y > C.LEADER_Y - C.BALL_SENSE) { e.st = 'wind'; e.wt = C.BALL_WIND; }
+      if (e.st === 'wind') { e.y += scroll * dt; e.wt -= dt; if (e.wt <= 0) { const dx = g.lx - e.x, dy = C.LEADER_Y + 6 - e.y, l = Math.hypot(dx, dy) || 1; e.st = 'dash'; e.dvx = dx / l * C.BALL_DASH; e.dvy = dy / l * C.BALL_DASH; if (!SIM) sfx('warn'); } }
+      if (e.st === 'dash') { e.x += e.dvx * dt; e.y += (e.dvy + scroll) * dt; }
+    }
+    const near = e.y > C.LEADER_Y - C.SURGE_RANGE && e.y < C.LEADER_Y + g.cDepth && !(e.kind === 'ball' && e.st);
+    if (!(e.kind === 'ball' && e.st && e.st !== 'drift')) {
     if (e.kind === 'spread') spreadFlame(g, e, dt);
     const slow = e.kind === 'lava' ? 0.35 + 0.65 * e.hp / e.max : 1;   
     e.y += (scroll + (e.vy + (near ? C.SURGE : 0)) * slow) * dt;
@@ -999,6 +1070,8 @@ function update(g, dt) {
     }
     if (e.wob) e.x += Math.cos(g.t * e.wf + e.ph) * e.wob * e.wf * dt;
     if (e.vx) e.x += e.vx * dt;   
+    }
+    if (e.pop > 0) { e.pop -= dt; e.x += e.pvx * dt; e.y += e.pvy * dt; }   
     const x0 = e.x;
     e.x = clamp(e.x, C.ROAD_L + 6, C.ROAD_R - 6);
     if (g.walls.some(w => e.y <= w.y && e.y >= w.y - w.len))
@@ -2504,12 +2577,21 @@ function render3D(g, sx, sy) {
   for (const e of g.enemies) {
     if (e.kind === 'tank') { const tk = R.tanks.get(), k = 1.1; tk.position.set(wx(e.x), 0, wz(e.y)); tk.scale.set(k, k, k); tk.userData.body.color.setHex(e.flash > 0 ? 0xffffff : 0x6f8fb0); continue; }
     if (e.kind === 'hydrant') { const hy = R.hydrants.get(), k = e.r / U3 * 2.8; hy.position.set(wx(e.x), 0, wz(e.y)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(e.flash > 0 ? 0xffffff : 0xd8262a); continue; }
-    flame(e.x, e.y, e.r / U3 * 1.1, e.kind === 'lava' ? lavaCol(e) : e.purple && e.kind === 'grunt' ? ECOL3.purple : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37);
+    const pk = e.st === 'wind' ? 1.25 + 0.15 * Math.sin(g.t * 40) : e.puff > 0 ? 1 + e.puff * 1.6 : 1;   
+    if (e.puff > 0) e.puff -= 1 / 60;
+    flame(e.x, e.y, e.r / U3 * 1.1 * pk, e.kind === 'lava' ? lavaCol(e) : e.purple && e.kind === 'grunt' ? ECOL3.purple : ECOL3[e.kind] || 0xff7a1a, e.x * 0.37, e.pop > 0 ? Math.sin(Math.PI * (1 - e.pop / 0.35)) * 1.6 : 0);
   }
   
   for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }
   
-  for (const { sp, ahead } of AH.squads) for (const lane of sp.lanes) {
+  for (const { sp, ahead } of AH.squads) for (const [li, lane] of sp.lanes.entries()) {
+    if (sp.spec) {   
+      const S = sp.spec[li], cx = laneX(lane);
+      for (const u of S.units) flame(cx + u.dx, u.dy - ahead, KIND_R[u.kind] / U3 * 1.1, u.kind === 'lava' ? 0xff4a10 : u.kind === 'spread' ? ECOL3.spread : ECOL3[u.kind] || 0xff7a1a, u.dx + u.dy);
+      if (S.tank) { const tk = R.tanks.get(); tk.position.set(wx(cx), 0, wz(40 - ahead)); tk.scale.set(1.1, 1.1, 1.1); tk.userData.body.color.setHex(0x6f8fb0); }
+      if (S.hydrant) { const side = lane === 2 ? 1 : 0, hy = R.hydrants.get(), k = 10 / U3 * 2.8; hy.position.set(wx(side ? CONFIG.ROAD_R - 12 : CONFIG.ROAD_L + 12), 0, wz(40 - ahead)); hy.scale.set(k, k, k); hy.userData.body.material.color.setHex(0xd8262a); }
+      continue;
+    }
     const cols = sp.cols || 6, x0 = laneX(lane) - LANE_W * 0.4;
     for (let rI = 0; rI < sp.rows; rI++) for (let c = 0; c < cols; c++) flame(x0 + (c + 0.5) * (LANE_W * 0.8 / cols), -30 - rI * 19 - ahead, 9 / U3 * 1.1, 0xff7a1a, c + rI);
     if (sp.mix && lane === sp.lanes[0]) {   

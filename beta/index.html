@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v96';
+const VERSION = 'v97';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -635,13 +635,14 @@ function buildTrack(g) {
         (gb2 => [guardTire(slotTire(g, C.GUARD_HP), gb2), gb2])(rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1, true)),
       ]);
       const plans = plans0.slice(); { const ti = plans.findIndex(p => p[0].type === 'tire'); if (ti === 1) { const j = rng() < 0.5 ? 0 : 2; [plans[1], plans[j]] = [plans[j], plans[1]]; } }   
-      const w0 = d + G * 0.9, len = 60 + G + 150;
+      
+      const w0 = d + G * 0.9, len = 60 + G + 30;
       T.push({ dist: w0, kind: 'wall', len });
       T.push({ dist: w0 + 60, kind: 'row', lanes: plans.map(p => p[0]) });
       const second = plans.map(p => p[1] === 'squad' ? { type: 'empty' } : p[1]);
       T.push({ dist: w0 + 60 + G * 0.55, kind: 'squad', lanes: plans.map((p, i) => p[1] === 'squad' || p[2] === 'squad' ? i : -1).filter(i => i >= 0), rows: rows + 1, cols: 5 });
       T.push({ dist: w0 + 60 + G, kind: 'row', lanes: second });
-      d = w0 + len;
+      d = w0 + 60 + G - G * (C.SQUAD_AFTER - 0.6);
       continue;
     }
     

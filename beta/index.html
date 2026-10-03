@@ -1159,7 +1159,7 @@ function update(g, dt) {
         
         const moves = BOSS_MOVES[kind] || ['ember'], mv = moves[(B.ai = (B.ai || 0) + 1) % moves.length];
         if (mv === 'ember') for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ x0: B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: 0, T: C.EMBER_T });
-        else if (mv === 'drop') for (let k = 0; k < 3; k++) (g.embers = g.embers || []).push({ drop: true, r: C.DROP_R, x0: 0, y0: 0, tx: clamp(k === 0 ? g.lx : g.lx + rr(-110, 110), C.ROAD_L + 14, C.ROAD_R - 14), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: -k * 0.25, T: C.ATK_WARN + 0.2 });
+        else if (mv === 'drop') for (let k = 0; k < (g.level <= 5 ? 2 : 3); k++)    (g.embers = g.embers || []).push({ drop: true, r: C.DROP_R, x0: 0, y0: 0, tx: clamp(k === 0 ? g.lx : g.lx + rr(-110, 110), C.ROAD_L + 14, C.ROAD_R - 14), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: -k * 0.25, T: C.ATK_WARN + 0.2 });
         else { const safe = mv === 'ram' ? -1 : ri(0, 2), lanes = mv === 'ram' ? [laneOf(g.lx)] : [0, 1, 2].filter(i => i !== safe);
           B.atk = { mv, lanes, t: 0, warn: B.rage ? C.ATK_WARN_RAGE : C.ATK_WARN, hit: false, from: rng() < 0.5 ? -1 : 1 };
           if (mv === 'ram') B.atk.x0 = B.x;

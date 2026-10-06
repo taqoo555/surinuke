@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v123';
+const VERSION = 'v124';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -150,7 +150,7 @@ const CONFIG = {
   PUMP_Y: 650, PUMP_SCALE: 0.7, PUMP_G: 14, PUMP_CORE: 16, PUMP_SPREAD: 0.3, PUMP_MIN: 0.25, PUMP_REACH: 320, PUMP_REACH_UP: 40,
   
   
-  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.5, PUMP_KPS: 8, PUMP_CLUSTER: 3, PUMP_WAIT: 2.5,    PUMP_RANGE: 560, PUMP_AHEAD: 80, PUMP_TRACK: 220,
+  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.5, PUMP_KPS: 8, PUMP_CLUSTER: 3, PUMP_WAIT: 2.5, PUMP_LEAD: 0.25,    PUMP_RANGE: 560, PUMP_AHEAD: 80, PUMP_TRACK: 220,
   
   PUMP_UNLOCK: 6,
   PUMP_PRICE: 800, PUMP_COL_PRICE: 100, PUMP_PAT_PRICE: 150,   
@@ -741,7 +741,7 @@ const pumpPos = g => ({ x: 180, y: CONFIG.PUMP_Y });
 
 function pumpArc(o, tx, ty) { const C = CONFIG, S = C.PUMP_SCALE, dx0 = tx - o.x, dy0 = ty - o.y, l0 = Math.hypot(dx0, dy0) || 1;
   const ox = o.x + dx0 / l0 * 1.03 * S * U3, oy = o.y + 0.1 * S * U3 + dy0 / l0 * 1.03 * S * U3, h0 = (2.1 + 0.34) * S;
-  const dist = Math.hypot(tx - ox, ty - oy), T = 0.25 + dist / 650;   
+  const dist = Math.hypot(tx - ox, ty - oy), T = 0.2 + dist / 800;   
   return { ox, oy, T, h0, vx: (tx - ox) / T, vy: (ty - oy) / T, vh: (0.15 - h0 + 0.5 * C.PUMP_G * T * T) / T, dist }; }
 function sprayDrop(o, P) {
   const C = CONFIG, sp = pumpSpread(P, Math.hypot(P.ax - o.x, P.ay - o.y)), a0 = rr2(0, 6.28), rr0 = sp.r * Math.sqrt(Math.random());
@@ -755,8 +755,9 @@ function sprayDrop(o, P) {
 
 function pumpAim(g, o, t) {
   if (t === g.boss) return { x: t.x, y: t.y + t.r * 0.6 };
+  
   const T = pumpArc(o, t.x, t.y).T, vy = (t.vy || 0) + (g.halt ? 0 : CONFIG.SCROLL);
-  return { x: t.x, y: Math.min(t.y + vy * T, CONFIG.LEADER_Y - 20) };
+  return { x: t.x, y: Math.min(t.y + vy * T * CONFIG.PUMP_LEAD, CONFIG.LEADER_Y - 20) };
 }
 function updatePump(g, dt) {   
   const P = g.pump, C = CONFIG; if (!P) return;

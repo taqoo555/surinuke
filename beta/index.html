@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v122';
+const VERSION = 'v123';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -228,7 +228,8 @@ const PUMP_PERF = [
   { key: 'lvPumpPow',   name: 'POWER',      base: 150, grow: 1.4, eff: lv => '×' + (1 + 0.3 * lv).toFixed(1) },   
   
   { key: 'lvPumpRate',  name: 'FREQUENCY',  base: 150, grow: 1.4, eff: lv => pumpCd(lv).toFixed(1) + 's', maxed: lv => pumpCd(lv) <= CONFIG.PUMP_CD_MIN + 1e-9 },
-  { key: 'lvPumpArea',  name: 'RANGE',      base: 150, grow: 1.4, eff: lv => String(pumpReach(lv)) },   
+  
+  { key: 'lvPumpArea',  name: 'RANGE',      base: 150, grow: 1.4, eff: lv => String(Math.min(pumpReach(lv), CONFIG.PUMP_RANGE)), maxed: lv => pumpReach(lv) >= CONFIG.PUMP_RANGE },   
 ];
 const PUMP_COLORS = [0xd8262a, 0x2f7bd8, 0xf2c21a, 0xff7ab0, 0x3fb85a, 0x2a2d34];
 const PUMP_PATS = ['NONE', 'STRIPES', 'STARS', 'FLAMES'];

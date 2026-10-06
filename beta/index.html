@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v121';
+const VERSION = 'v122';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -226,7 +226,8 @@ const PUMP_CARD = { key: 'pump', icon: 'pump', name: 'PUMP TRUCK', garage: true,
 const SHOP = [SHOP_V24[1], SHOP_V24[0], SHOP_V24[2], SHOP_V24[3], PUMP_CARD];
 const PUMP_PERF = [
   { key: 'lvPumpPow',   name: 'POWER',      base: 150, grow: 1.4, eff: lv => '×' + (1 + 0.3 * lv).toFixed(1) },   
-  { key: 'lvPumpRate',  name: 'FREQUENCY',  base: 150, grow: 1.4, eff: lv => pumpCd(lv).toFixed(1) + 's' },
+  
+  { key: 'lvPumpRate',  name: 'FREQUENCY',  base: 150, grow: 1.4, eff: lv => pumpCd(lv).toFixed(1) + 's', maxed: lv => pumpCd(lv) <= CONFIG.PUMP_CD_MIN + 1e-9 },
   { key: 'lvPumpArea',  name: 'RANGE',      base: 150, grow: 1.4, eff: lv => String(pumpReach(lv)) },   
 ];
 const PUMP_COLORS = [0xd8262a, 0x2f7bd8, 0xf2c21a, 0xff7ab0, 0x3fb85a, 0x2a2d34];
@@ -1333,7 +1334,7 @@ window.__sim = function (opt) {
 function autoBuy(m) {
   if (!SHOP.length) return;
   for (;;) {
-    const list = SHOP.filter(x => !x.garage).concat(m.hasPump ? PUMP_PERF : m.level >= CONFIG.PUMP_UNLOCK ? [{ key: 'hasPump', base: CONFIG.PUMP_PRICE, grow: 1 }] : []);   
+    const list = SHOP.filter(x => !x.garage).concat(m.hasPump ? PUMP_PERF.filter(s => !(s.maxed && s.maxed(m[s.key] || 0))) : m.level >= CONFIG.PUMP_UNLOCK ? [{ key: 'hasPump', base: CONFIG.PUMP_PRICE, grow: 1 }] : []);   
     const s = list.sort((a, b) => shopCost(a, m) - shopCost(b, m))[0];
     const cost = shopCost(s, m);
     if (m.coins < cost) return;
@@ -1960,7 +1961,7 @@ function drawPumpCard(r) {
     txt('STAGE ' + CONFIG.PUMP_UNLOCK, lx, r.y + r.h - 16, 12, '#8890a8', 'center', '800');
     return;
   }
-  const can = !meta.hasPump ? meta.coins >= CONFIG.PUMP_PRICE : PUMP_PERF.some(s => meta.coins >= shopCost(s, meta));
+  const can = !meta.hasPump ? meta.coins >= CONFIG.PUMP_PRICE : PUMP_PERF.some(s => !(s.maxed && s.maxed(meta[s.key] || 0)) && meta.coins >= shopCost(s, meta));
   ctx.fillStyle = 'rgba(20,26,50,0.88)'; rrect(r.x, r.y, r.w, r.h, 12); ctx.fill();
   ctx.strokeStyle = can ? '#ffd84a' : '#3a4260'; ctx.lineWidth = can ? 3 : 2; rrect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 12); ctx.stroke();
   txt('PUMP TRUCK', r.x + r.w / 2, r.y + 12, 10, '#ffffff', 'center', '800');
@@ -1985,7 +1986,7 @@ function garageTap(b) {
   const C = CONFIG, pay = c => { if (meta.coins < c) { sfx('no'); return false; } meta.coins -= c; sfx('buy'); burst(b.x + b.w / 2, b.y + b.h / 2, '#ffd84a', 16); return true; };
   if (b.kind === 'back') { scene = garageFrom || 'menu'; return; }
   if (b.kind === 'get') { if (pay(C.PUMP_PRICE)) meta.hasPump = 1; }
-  else if (b.kind === 'perf') { const s = PUMP_PERF[b.i]; if (pay(shopCost(s, meta))) meta[s.key]++; }
+  else if (b.kind === 'perf') { const s = PUMP_PERF[b.i]; if (s.maxed && s.maxed(meta[s.key] || 0)) { sfx('no'); return; } if (pay(shopCost(s, meta))) meta[s.key]++; }
   else if (b.kind === 'col') { const own = (meta.pumpCols || [0]).includes(b.i); if (own || pay(C.PUMP_COL_PRICE)) { if (!own) meta.pumpCols = (meta.pumpCols || [0]).concat(b.i); meta.pumpColor = b.i; if (own) sfx('buy'); } }
   else if (b.kind === 'pat') { const own = (meta.pumpPats || [0]).includes(b.i); if (own || pay(C.PUMP_PAT_PRICE)) { if (!own) meta.pumpPats = (meta.pumpPats || [0]).concat(b.i); meta.pumpPat = b.i; if (own) sfx('buy'); } }
   saveMeta();
@@ -2008,13 +2009,14 @@ function drawGarage() {
     else if (b.kind === 'get') { const can = meta.coins >= C.PUMP_PRICE;
       ctx.fillStyle = can ? '#ffd84a' : 'rgba(40,46,70,0.9)'; rrect(b.x, b.y, b.w, b.h, 14); ctx.fill();
       drawCoin(b.x + 54, b.y + b.h / 2, 11); txt(String(C.PUMP_PRICE), b.x + b.w / 2 + 16, b.y + b.h / 2 + 1, 24, can ? '#1a1f33' : '#8890a8', 'center', '800'); }
-    else if (b.kind === 'perf') { const s = PUMP_PERF[b.i], lv = meta[s.key] || 0, cost = shopCost(s, meta), can = meta.coins >= cost;
+    else if (b.kind === 'perf') { const s = PUMP_PERF[b.i], lv = meta[s.key] || 0, cost = shopCost(s, meta), mx = !!(s.maxed && s.maxed(lv)), can = !mx && meta.coins >= cost;
       ctx.fillStyle = 'rgba(20,26,50,0.92)'; rrect(b.x, b.y, b.w, b.h, 12); ctx.fill();
       ctx.strokeStyle = can ? '#ffd84a' : '#3a4260'; ctx.lineWidth = can ? 3 : 2; rrect(b.x + 1, b.y + 1, b.w - 2, b.h - 2, 12); ctx.stroke();
       txt(s.name, b.x + b.w / 2, b.y + 13, 10, '#fff', 'center', '800');
       drawPerfIcon(b.i, b.x + b.w / 2, b.y + 36);
       txt(s.eff(lv), b.x + b.w / 2, b.y + 56, 13, '#fff');
-      pricePill(b.x + 8, b.y + b.h - 22, b.w - 16, cost); }
+      if (mx) { ctx.fillStyle = 'rgba(40,46,70,0.9)'; rrect(b.x + 8, b.y + b.h - 22, b.w - 16, 18, 9); ctx.fill(); txt('MAX', b.x + b.w / 2, b.y + b.h - 12, 11, '#ffd84a', 'center', '800'); }
+      else pricePill(b.x + 8, b.y + b.h - 22, b.w - 16, cost); }
     else if (b.kind === 'col') { const own = (meta.pumpCols || [0]).includes(b.i), sel = meta.pumpColor === b.i, cx = b.x + b.w / 2;
       ctx.fillStyle = '#' + PUMP_COLORS[b.i].toString(16).padStart(6, '0'); ctx.beginPath(); ctx.arc(cx, b.y + 22, 19, 0, 6.28); ctx.fill();
       ctx.strokeStyle = sel ? '#ffffff' : 'rgba(255,255,255,0.25)'; ctx.lineWidth = sel ? 4 : 1.5; ctx.beginPath(); ctx.arc(cx, b.y + 22, sel ? 23 : 19, 0, 6.28); ctx.stroke();

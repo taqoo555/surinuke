@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v124';
+const VERSION = 'v125';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -150,7 +150,7 @@ const CONFIG = {
   PUMP_Y: 650, PUMP_SCALE: 0.7, PUMP_G: 14, PUMP_CORE: 16, PUMP_SPREAD: 0.3, PUMP_MIN: 0.25, PUMP_REACH: 320, PUMP_REACH_UP: 40,
   
   
-  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 0.8, PUMP_SPLASH_UP: 8, PUMP_DUR: 2.5, PUMP_KPS: 8, PUMP_CLUSTER: 3, PUMP_WAIT: 2.5, PUMP_LEAD: 0.25,    PUMP_RANGE: 560, PUMP_AHEAD: 80, PUMP_TRACK: 220,
+  PUMP_CD: 3.5, PUMP_CD_DOWN: 0.88, PUMP_CD_MIN: 1.0,    PUMP_SPLASH_UP: 8, PUMP_DUR: 2.5, PUMP_DUR_UP: 0.4, PUMP_DUR_MAX: 8, PUMP_KPS: 8, PUMP_CLUSTER: 3, PUMP_WAIT: 2.5, PUMP_LEAD: 0.25,    PUMP_RANGE: 560, PUMP_AHEAD: 80, PUMP_TRACK: 220,
   
   PUMP_UNLOCK: 6,
   PUMP_PRICE: 800, PUMP_COL_PRICE: 100, PUMP_PAT_PRICE: 150,   
@@ -182,12 +182,13 @@ const SAVE_KEY = 'wars_meta_v24';
 const OLD_KEYS = ['surinuke_meta'];   
 let saveOK = false;
 function defaultMeta() { return { coins: 0, level: 1, lvRate: 0, lvDmg: 0, lvIncome: 0, lvArmy: 0, lvGuard: 0, lvKami: 0, lvRanged: 0,
-  hasPump: 0, lvPumpPow: 0, lvPumpRate: 0, lvPumpArea: 0, pumpColor: 0, pumpPat: 0, pumpCols: [0], pumpPats: [0] }; }   
+  hasPump: 0, lvPumpPow: 0, lvPumpRate: 0, lvPumpDur: 0, pumpColor: 0, pumpPat: 0, pumpCols: [0], pumpPats: [0] }; }   
 let meta = defaultMeta();
 function loadMeta() {
   try {
     const s = localStorage.getItem(SAVE_KEY);
     if (s) meta = Object.assign(defaultMeta(), JSON.parse(s));
+    if (meta.lvPumpArea && !meta.lvPumpDur) { meta.lvPumpDur = meta.lvPumpArea; delete meta.lvPumpArea; }   
     localStorage.setItem(SAVE_KEY + '_t', '1');
     saveOK = localStorage.getItem(SAVE_KEY + '_t') === '1';   
   } catch (e) { saveOK = false; }
@@ -229,13 +230,14 @@ const PUMP_PERF = [
   
   { key: 'lvPumpRate',  name: 'FREQUENCY',  base: 150, grow: 1.4, eff: lv => pumpCd(lv).toFixed(1) + 's', maxed: lv => pumpCd(lv) <= CONFIG.PUMP_CD_MIN + 1e-9 },
   
-  { key: 'lvPumpArea',  name: 'RANGE',      base: 150, grow: 1.4, eff: lv => String(Math.min(pumpReach(lv), CONFIG.PUMP_RANGE)), maxed: lv => pumpReach(lv) >= CONFIG.PUMP_RANGE },   
+  { key: 'lvPumpDur',   name: 'SPRAY TIME', base: 150, grow: 1.4, eff: lv => pumpDur(lv).toFixed(1) + 's', maxed: lv => pumpDur(lv) >= CONFIG.PUMP_DUR_MAX - 1e-9 },
 ];
 const PUMP_COLORS = [0xd8262a, 0x2f7bd8, 0xf2c21a, 0xff7ab0, 0x3fb85a, 0x2a2d34];
 const PUMP_PATS = ['NONE', 'STRIPES', 'STARS', 'FLAMES'];
 const pumpCd = lv => Math.max(CONFIG.PUMP_CD_MIN, CONFIG.PUMP_CD * Math.pow(CONFIG.PUMP_CD_DOWN, lv));   
 const pumpDps = (g, lv) => CONFIG.GRUNT_HP * g.mul * easeOf(g.level) * CONFIG.PUMP_KPS * g.power * (1 + 0.3 * lv);   
-const pumpReach = lv => CONFIG.PUMP_REACH + CONFIG.PUMP_REACH_UP * lv;                            
+const pumpReach = lv => CONFIG.PUMP_RANGE;   
+const pumpDur = lv => Math.min(CONFIG.PUMP_DUR_MAX, CONFIG.PUMP_DUR + CONFIG.PUMP_DUR_UP * lv);                            
 function pumpSpread(P, dist) { const C = CONFIG, over = Math.max(0, dist - pumpReach(P.area)), r = C.PUMP_CORE + over * C.PUMP_SPREAD;
   return { r, k: Math.max(C.PUMP_MIN, C.PUMP_CORE / r), over }; }                                   
 
@@ -264,7 +266,7 @@ function newRun(level, m, seed) {
     level, mul: Math.pow(C.LEVEL_GROW, level - 1), sc: 1 + C.GATE_GROW * (level - 1),
     t: 0, over: null,
     lvGuard: 0, lvKami: 0, lvRanged: 0,   
-    pump: m.hasPump ? { pow: m.lvPumpPow || 0, rate: m.lvPumpRate || 0, area: m.lvPumpArea || 0, cd: 1.5, spray: 0, ax: 180, ay: 300, on: false, x: null, acc: 0, t: null } : null,
+    pump: m.hasPump ? { pow: m.lvPumpPow || 0, rate: m.lvPumpRate || 0, area: 0, dur: m.lvPumpDur || 0, cd: 1.5, spray: 0, ax: 180, ay: 300, on: false, x: null, acc: 0, t: null } : null,
     guardHp: m.lvGuard ? guardMax(m.lvGuard) : 0, guardT: 0, kamiReady: !!m.lvKami, kamiT: 0, rangedT: 1, missiles: [],
     N: C.START_UNITS + C.UP_ARMY * m.lvArmy,   
     power: 1 + C.UP_DMG * m.lvDmg, rateMul: 1 + C.UP_RATE * m.lvRate, income: 1 + C.UP_INCOME * m.lvIncome,
@@ -781,7 +783,7 @@ function updatePump(g, dt) {
     if (g.boss && g.boss.hp > 0 && g.boss.y > 0 && bs < C.PUMP_CLUSTER) t = g.boss, bs = 99;
     if (!t || (bs < C.PUMP_CLUSTER && P.wait < C.PUMP_WAIT)) { P.cd = 0.1; return; }
     P.wait = 0;
-    P.on = true; P.spray = C.PUMP_DUR; P.t = t; P.acc = 0; P.age = 0; { const a = pumpAim(g, o, t); P.ax = a.x; P.ay = a.y; }      
+    P.on = true; P.spray = pumpDur(P.dur); P.t = t; P.acc = 0; P.age = 0; { const a = pumpAim(g, o, t); P.ax = a.x; P.ay = a.y; }      
     if (!SIM) sfx('pump');   
   }
   P.spray -= dt; if (P.spray <= 0) { P.on = false; P.cd = pumpCd(P.rate); return; }
@@ -2037,10 +2039,11 @@ function patTile(i) { const col = PUMP_COLORS[meta.pumpColor] || PUMP_COLORS[0],
 function drawPerfIcon(i, cx, cy) {   
   if (i === 0) { const r = 11; ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.moveTo(cx, cy - r * 1.5); ctx.bezierCurveTo(cx + r * 1.1, cy - r * 0.3, cx + r, cy + r, cx, cy + r); ctx.bezierCurveTo(cx - r, cy + r, cx - r * 1.1, cy - r * 0.3, cx, cy - r * 1.5); ctx.fill();
     ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx + 14, cy - 6); ctx.lineTo(cx + 18, cy + 2); ctx.lineTo(cx + 13, cy + 2); ctx.lineTo(cx + 17, cy + 10); ctx.stroke(); }
-  else if (i === 1) { ctx.fillStyle = '#7fd0ff'; ctx.beginPath(); ctx.moveTo(cx - 10, cy - 12); ctx.lineTo(cx + 10, cy - 12); ctx.lineTo(cx, cy); ctx.lineTo(cx + 10, cy + 12); ctx.lineTo(cx - 10, cy + 12); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fill();
+  else if (i === 1) {   
+    ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, 11, -0.3, Math.PI * 1.6); ctx.stroke();
+    const ax = cx + Math.cos(-0.3) * 11, ay = cy + Math.sin(-0.3) * 11; ctx.fillStyle = '#7fd0ff'; ctx.beginPath(); ctx.moveTo(ax + 6, ay - 2); ctx.lineTo(ax - 4, ay - 5); ctx.lineTo(ax - 1, ay + 6); ctx.closePath(); ctx.fill(); }
+  else { ctx.fillStyle = '#7fd0ff'; ctx.beginPath(); ctx.moveTo(cx - 10, cy - 12); ctx.lineTo(cx + 10, cy - 12); ctx.lineTo(cx, cy); ctx.lineTo(cx + 10, cy + 12); ctx.lineTo(cx - 10, cy + 12); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.fillRect(cx - 12, cy - 14, 24, 3); ctx.fillRect(cx - 12, cy + 11, 24, 3); }
-  else { ctx.fillStyle = '#3fa9ff'; ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 6.28); ctx.fill();   
-    ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = 2.5; for (const r of [9, 15]) { ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 0.75, 0, 0, 6.28); ctx.stroke(); } }
 }
 function drawShop() {   
   SHOP.forEach((s, i) => {

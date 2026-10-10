@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v129';
+const VERSION = 'v130';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -536,6 +536,10 @@ function freeRow(g, c) {
   
   
   
+  if (c === 0 && g.opener === 1) { const v = 4 + 2 * g.level, bl = rng() < 0.5, pl = fix(v), mu = { type: 'mul', v: 2, good: true, hitT: 0 };   
+    return { parts: bl ? [pl, fix(-3), mu] : [mu, fix(-3), pl], cuts: [fixed(L1), fixed(L2)], blueX: laneX(bl ? 0 : 2) }; }
+  if (c === 0 && g.opener === 2) { const k = rng() < 0.5 ? 0 : 2, gb = fix(Math.round((4 + 2 * g.level) * 1.5));   
+    return { parts: k === 0 ? [gb, red(1.0)] : [red(1.0), gb], cuts: [fixed(k === 0 ? L1 : L2)], blueX: laneX(k), guard: k, gate: gb }; }
   if (c === 0) { const f = win([red(), fix(4 + 2 * g.level), red()], 120); f.blueX = f.cuts[0].x; return f; }   
   if (c === 1) return { parts: [red(1.0)], cuts: [] };
   return freeRowAt(r < W[0] ? r : r < W[1] ? r : W[1] + (W[2] - W[1]) * rng());
@@ -675,12 +679,16 @@ function buildTrack(g) {
       continue;
     }
     
+    
+    if (c === 0) { const ops = g.level >= 10 ? [0, 1, 2, 3] : [0, 1, 3]; g.opener = g.level >= 6 ? ops[ri(0, ops.length - 1)] : 0; }   
     const fr = freeRow(g, c);
     
     
     
     if (c === 0) {
-      T.push({ dist: d = 60, kind: 'row', free: fr });
+      if (g.opener === 3) { T.push({ dist: d = 40, kind: 'squad', lanes: [0, 1, 2], rows: 1, cols: 3, hpMul: 0.3 }); T.push({ dist: d += 250, kind: 'row', free: fr }); continue; }
+      if (fr.guard != null) T.push({ dist: 160 - C.GUARD_GAP, kind: 'row', guard: true, lanes: [0, 1, 2].map(i => i === fr.guard ? guardTire(slotTire(g, C.GUARD_HP * C.GUARD_EARLY * 0.5), fr.gate) : { type: 'empty' }) });
+      T.push({ dist: d = fr.guard != null ? 160 : 60, kind: 'row', free: fr });
       T.push({ dist: d += 230, kind: 'squad', lanes: [0, 1, 2], rows: 1, cols: 3, hpMul: 0.3 });   
       continue;
     }
@@ -1187,7 +1195,7 @@ function update(g, dt) {
       if (B.atk) {   
         const A = B.atk; A.t += dt;
         if (A.mv === 'ram') { const L = laneX(A.lanes[0]), k = clamp(A.t / A.warn, 0, 1); B.x = A.x0 + (L - A.x0) * Math.min(1, k * 2); }   
-        if (!SIM && A.mv === 'beam' && A.t >= A.warn && !A.hit) { const k = (A.t - A.warn) / C.QUAKE_T, fy = B.y + (C.LEADER_Y + 40 - B.y) * k; if (R3.on) for (const l of A.lanes) { fxSmoke(laneX(l) + rr2(-25, 25), fy, 1); fxSparks(laneX(l) + rr2(-20, 20), fy, 1); } }   
+        if (!SIM && (A.mv === 'beam' || A.mv === 'breath') && A.t >= A.warn && !A.hit) { const k = (A.t - A.warn) / C.QUAKE_T, fy = B.y + (C.LEADER_Y + 40 - B.y) * k; if (R3.on) for (const l of A.lanes) { fxSmoke(laneX(l) + rr2(-25, 25), fy, 1); fxSparks(laneX(l) + rr2(-20, 20), fy, 1); } }   
         const hitAt = A.warn + (A.mv === 'ram' ? C.ATK_ON : A.mv === 'beam' || A.mv === 'breath' ? C.QUAKE_T : A.mv === 'throw' ? C.THROW_T : 0);
         if (!SIM && A.mv === 'throw' && !A.thrown && A.t >= A.warn) { A.thrown = true; sfx('dash'); }
         if (!A.hit && A.t >= hitAt) {   
@@ -1325,7 +1333,7 @@ function runSim(bot, level, m, seed) {
   let steps = 0;
   while (!g.over && steps < 60 * 400) { botStep(g, bot, st); update(g, 1 / 60); steps++; }
   SIM = false;
-  return { result: g.over, t: +g.t.toFixed(1), N: g.N, peak: g.peak, coins: g.coins, kills: g.kills, wlv: g.wlv, lost: g.stats,
+  return { result: g.over, opener: g.opener, t: +g.t.toFixed(1), N: g.N, peak: g.peak, coins: g.coins, kills: g.kills, wlv: g.wlv, lost: g.stats,
            brk: g.brk ? +(g.brk.reduce((a, b) => a + b, 0) / g.brk.length).toFixed(2) : null, wGot: g.wGot, wMiss: g.wMiss, prog: +Math.min(1, g.dist / g.trackEnd).toFixed(2), bossHp: g.boss ? Math.round(g.boss.hp) : null };
 }
 function withCfg(cfg, fn) {
@@ -1504,7 +1512,7 @@ function sfx(k) {
     case 'lose': tone(90, 0.09, 'triangle', 0.3); break;
     case 'beam': noise(0.7, 0.3, 160); tone(48, 0.7, 'sine', 0.3, 35); break;   
     case 'thud': tone(70, 0.18, 'sine', 0.3, 40); break;
-    case 'fire': noise(0.6, 0.22, 700); break;      
+    case 'fire': noise(0.9, 0.2, 520); break;         
     case 'ember': if (now - lastEmber < 120) return; lastEmber = now; tone(130, 0.07, 'triangle', 0.12); break;   
     case 'combo': [262, 330, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.4), i * 70)); break;
     case 'boss': tone(55, 0.8, 'sawtooth', 0.25, 40); break;
@@ -2343,9 +2351,9 @@ function init3D() {
     const haloIM = new T.InstancedMesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: softTex, color: 0xff7a2a, transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending }), 500);
     for (const im of [puffIM, sparkIM, haloIM]) { im.frustumCulled = false; im.renderOrder = 5; scene3.add(im); }
     
-    const bfBody = new T.InstancedMesh(new T.ConeGeometry(0.95, 2.3, 16), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78, depthWrite: false }), 60);
-    const bfCore = new T.InstancedMesh(new T.ConeGeometry(0.55, 1.5, 12), new T.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.9, depthWrite: false }), 60);
-    const bfHalo = new T.InstancedMesh(new T.PlaneGeometry(1, 1), haloIM.material, 60);
+    const bfBody = new T.InstancedMesh(new T.ConeGeometry(0.95, 2.3, 16), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78, depthWrite: false }), 220);   
+    const bfCore = new T.InstancedMesh(new T.ConeGeometry(0.55, 1.5, 12), new T.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.9, depthWrite: false }), 220);
+    const bfHalo = new T.InstancedMesh(new T.PlaneGeometry(1, 1), haloIM.material, 220);
     bfBody.setColorAt(0, new T.Color(0xff7a1a));
     for (const im of [bfBody, bfCore, bfHalo]) { im.frustumCulled = false; im.count = 0; scene3.add(im); } bfBody.renderOrder = 3; bfCore.renderOrder = 4; bfHalo.renderOrder = 5;
     Object.assign(R3, { bfBody, bfCore, bfHalo });
@@ -2356,6 +2364,8 @@ function init3D() {
     const rockEyeW = new T.InstancedMesh(new T.SphereGeometry(0.2, 8, 6), B(0xfff4e0), 240), rockEyeB = new T.InstancedMesh(new T.SphereGeometry(0.1, 6, 5), B(0x1a0a04), 240);
     for (const im of [rockIM, rockEyeW, rockEyeB]) { im.frustumCulled = false; im.count = 0; scene3.add(im); }
     Object.assign(R3, { rockIM, rockEyeW, rockEyeB });
+    const shardIM = new T.InstancedMesh(new T.ConeGeometry(1, 2.4, 4), new T.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), 90);   
+    shardIM.setColorAt(0, new T.Color(0x6a5a4a)); shardIM.frustumCulled = false; shardIM.count = 0; shardIM.castShadow = true; scene3.add(shardIM); R3.shardIM = shardIM;
     
     const laneWarn = [0, 1, 2].map(() => { const m = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.3, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.visible = false; m.renderOrder = 2; scene3.add(m); return m; });
     
@@ -2815,7 +2825,7 @@ function render3D(g, sx, sy) {
   };
   let nb = 0;
   const bflame = (x, y, r, col, ph, lift) => {   
-    if (nb >= 60) return;
+    if (nb >= 220) return;
     const fl = 1 + 0.16 * Math.sin(g.t * 13 + ph) + 0.1 * Math.sin(g.t * 23 + ph * 1.7), sw = Math.sin(g.t * 7 + ph) * 0.14 + Math.sin(g.t * 17 + ph) * 0.06;
     d.rotation.set(0, 0, sw); d.position.set(wx(x), lift + r * 1.1 * fl, wz(y)); d.scale.set(r, r * fl, r); d.updateMatrix(); R.bfBody.setMatrixAt(nb, d.matrix); R.col.setHex(col); R.bfBody.setColorAt(nb, R.col);
     d.position.set(wx(x), lift + r * 0.8 * fl, wz(y) + r * 0.15); d.updateMatrix(); R.bfCore.setMatrixAt(nb, d.matrix);
@@ -2851,8 +2861,10 @@ function render3D(g, sx, sy) {
         bflame(BsF.x + bf.fx * s2 * U3, BsF.y + (BsF.ramY || 0) + bf.fz * s2 * U3, rr0, bf.col, bf.ph, hop + Math.max(0, (bf.fy - 0.7 * bf.fs) * s2)); } }
     const A2 = g.boss && g.boss.hp > 0 && g.boss.atk;   
     if (A2 && A2.mv === 'throw' && A2.t >= A2.warn) { const k = clamp((A2.t - A2.warn) / CONFIG.THROW_T, 0, 1); bflame(A2.x0 + (A2.tx - A2.x0) * k, g.boss.y + (CONFIG.LEADER_Y - g.boss.y) * k, 0.55, 0xff6a1a, g.t * 9, 1.6 * (1 - k) + 0.2); }
-    if (A2 && A2.mv === 'breath' && A2.t >= A2.warn && A2.t < A2.warn + CONFIG.QUAKE_T + CONFIG.ATK_ON) { const k = clamp((A2.t - A2.warn) / CONFIG.QUAKE_T, 0, 1), fy = g.boss.y + 30 + (CONFIG.LEADER_Y + 40 - g.boss.y - 30) * k;
-      for (const l of A2.lanes) for (let q = 0; q < 9; q++) { const yy = g.boss.y + 30 + (fy - g.boss.y - 30) * q / 8, xx = g.boss.x + (laneX(l) - g.boss.x) * Math.min(1, (yy - g.boss.y) / 120); bflame(xx + Math.sin(g.t * 20 + q) * 6, yy, 0.38 + 0.25 * (q / 8), q % 3 ? 0xff7a1a : 0xffc21a, q + l * 3, 0.5 + 1.6 * (1 - q / 8)); } }
+    
+    if (A2 && A2.mv === 'breath' && A2.t >= A2.warn && A2.t < A2.warn + CONFIG.QUAKE_T + CONFIG.ATK_ON) { const k = clamp((A2.t - A2.warn) / CONFIG.QUAKE_T, 0, 1), by = g.boss.y + 30, fy = by + (CONFIG.LEADER_Y + 40 - by) * k, N = 30;
+      for (const l of A2.lanes) for (let q = 0; q < N; q++) { const u = (q / N + g.t * 2.2) % 1, yy = by + (fy - by) * u, xx = g.boss.x + (laneX(l) - g.boss.x) * Math.min(1, (yy - g.boss.y) / 120) + Math.sin(q * 2.3 + g.t * 9) * LANE_W * 0.32 * u;
+        bflame(xx, yy, 0.4 + 0.95 * u, u < 0.18 ? 0xfff0a0 : u < 0.45 ? 0xffc21a : u < 0.8 ? 0xff7a1a : 0xff3a10, q * 1.7 + l * 3, 0.3 + 1.9 * (1 - u)); } }
     R.bfBody.count = R.bfCore.count = R.bfHalo.count = nb;
     for (const im of [R.bfBody, R.bfCore, R.bfHalo]) im.instanceMatrix.needsUpdate = true; if (R.bfBody.instanceColor) R.bfBody.instanceColor.needsUpdate = true;
   }
@@ -2901,6 +2913,7 @@ function render3D(g, sx, sy) {
   }
   R.embers.end(); R.rings.end();
   
+  let ns = 0;
   for (const m of R.laneWarn) m.visible = false; for (const b of R.beamCol) b.core.visible = b.glow.visible = b.aim.visible = false; R.arm.visible = false;
   const ray = (m, x0, y0, z0, x1, y1, z1, rad) => { const v = R.v.set(x1 - x0, y1 - y0, z1 - z0), L = v.length(); v.normalize(); m.visible = true; m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); m.quaternion.setFromUnitVectors(R.up || (R.up = new R.T.Vector3(0, 1, 0)), v); m.scale.set(rad, L, rad); };
   if (g.boss && g.boss.atk && g.boss.atk.mv === 'throw' && g.boss.atk.t < g.boss.atk.warn) {   
@@ -2914,11 +2927,19 @@ function render3D(g, sx, sy) {
         const k = clamp((A.t - A.warn) / CONFIG.QUAKE_T, 0, 1), fy = Bb.y + (CONFIG.LEADER_Y + 40 - Bb.y) * k, b = R.beamCol[i], x = wx(laneX(l)), zf = wz(fy);
         ray(b.core, x, 0.05, zA + 0.5, x, 0.05, zf, 0.12 + 0.05 * Math.sin(g.t * 60)); ray(b.glow, x, 0.1, zA + 0.5, x, 0.1, zf, 0.5);
         const m = R.laneWarn[i]; m.visible = true; m.position.set(x, 0.04, (zA + zf) / 2); m.scale.set(lw * 0.96, Math.max(0.1, zf - zA), 1); m.material.opacity = 0.45;
+        
+        const ta = A.t - A.warn, tEnd = CONFIG.QUAKE_T + CONFIG.ATK_ON, span = CONFIG.LEADER_Y + 40 - Bb.y;
+        for (let jj = 0; jj < 26 && ns < 90; jj++) { const yy = Bb.y + 30 + jj * 22; if (yy > CONFIG.LEADER_Y + 40) break; const pass = (yy - Bb.y) / span * CONFIG.QUAKE_T, a2 = ta - pass; if (a2 <= 0) continue;
+          const up = Math.min(1, a2 / 0.12) * clamp((tEnd + 0.1 - ta) / 0.25, 0, 1), sd = (jj % 2 ? 1 : -1) * (8 + (jj * 7 + l * 5) % 16), sz = (0.55 + ((jj * 13 + l) % 5) * 0.12) * up;
+          if (sz <= 0.01) continue;
+          d.rotation.set(Math.sin(jj * 1.7) * 0.35, jj * 0.9, Math.cos(jj * 2.3 + l) * 0.35 + Math.sin(g.t * 50 + jj) * 0.05); d.position.set(x + sd / U3, sz * 1.1 - 0.2, wz(yy)); d.scale.set(sz, sz, sz); d.updateMatrix(); R.shardIM.setMatrixAt(ns, d.matrix);
+          R.col.setHex(jj % 3 ? 0xa89a86 : 0xc0703a); R.shardIM.setColorAt(ns, R.col); ns++; }
       }
     });
     if (on && A.mv === 'swing') { const k = clamp((A.t - A.warn) / CONFIG.ATK_ON, 0, 1), xs = A.lanes.map(laneX), x0 = Math.min(...xs) - LANE_W / 2, x1 = Math.max(...xs) + LANE_W / 2, cx = A.from < 0 ? x0 + (x1 - x0) * k : x1 - (x1 - x0) * k;
       R.arm.visible = true; R.arm.position.set(wx(cx), 1.0, wz(CONFIG.LEADER_Y - 10)); R.arm.scale.set(1, (x1 - x0) / U3 * 0.5, 1); }
   }
+  R.shardIM.count = ns; R.shardIM.instanceMatrix.needsUpdate = true; if (R.shardIM.instanceColor) R.shardIM.instanceColor.needsUpdate = true;
   
   const Bs = g.boss || (AH.boss && { x: 180, y: AH.boss.y, r: 46, hp: 1, flash: 0 });   
   

@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v131';
+const VERSION = 'v132';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -920,7 +920,8 @@ function trackFlow(g, dt, scroll) {
 
 
 
-const BOSS_MOVES = { house: ['ember'], tower: ['beam'], truck: ['ram'], majin: ['ram', 'throw'], dragon: ['ram', 'breath', 'firedrop'] };   
+
+const BOSS_MOVES = { house: ['ember'], tower: ['beam'], truck: ['ram'], majin: ['ember', 'beam'], dragon: ['ram', 'breath', 'firedrop'] };   
 function bossKindOf(level) {
   if (level % 10 === 0) return (level / 10) % 2 === 1 ? 'majin' : 'dragon';   
   const sc = stageOf(level).scene;

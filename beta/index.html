@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v132';
+const VERSION = 'v133';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -921,7 +921,7 @@ function trackFlow(g, dt, scroll) {
 
 
 
-const BOSS_MOVES = { house: ['ember'], tower: ['beam'], truck: ['ram'], majin: ['ember', 'beam'], dragon: ['ram', 'breath', 'firedrop'] };   
+const BOSS_MOVES = { house: ['ember'], tower: ['beam'], truck: ['ram'], majin: ['ember', 'beam'],    dragon: ['ram', 'breath', 'firedrop'] };   
 function bossKindOf(level) {
   if (level % 10 === 0) return (level / 10) % 2 === 1 ? 'majin' : 'dragon';   
   const sc = stageOf(level).scene;
@@ -1180,7 +1180,7 @@ function update(g, dt) {
         B.et = Math.max(C.EMBER_MIN, C.EMBER_EVERY - 0.04 * g.level);
         
         const moves = BOSS_MOVES[kind] || ['ember'], mv = moves[(B.ai = (B.ai || 0) + 1) % moves.length];
-        if (mv === 'ember') for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ x0: B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: 0, T: C.EMBER_T });
+        if (mv === 'ember') for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ stone: kind === 'majin', x0: B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: 0, T: C.EMBER_T });
         else if (mv === 'drop' || mv === 'firedrop') for (let k = 0; k < (g.level <= 5 ? 2 : 3); k++)    (g.embers = g.embers || []).push({ drop: true, fire: mv === 'firedrop', r: C.DROP_R, x0: 0, y0: 0, tx: clamp(k === 0 ? g.lx : g.lx + rr(-110, 110), C.ROAD_L + 14, C.ROAD_R - 14), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: -k * 0.25, T: C.ATK_WARN + 0.2 });
         else { 
           const safe = mv === 'ram' ? -1 : ri(0, 2), one = (mv === 'beam' && rng() < C.QUAKE_ONE) || (mv === 'breath' && rng() < C.BREATH_ONE);
@@ -2834,13 +2834,14 @@ function render3D(g, sx, sy) {
     nb++;
   };
   let nr = 0;
-  const rock = (x, y, r, heat, ph, flash, lift) => {   
+  const rock = (x, y, r, heat, ph, flash, lift, noEye) => {   
     if (nr >= 120) return;
     const bob = (lift || 0) + Math.abs(Math.sin(g.t * 6 + ph)) * r * 0.25, R0 = r * 1.15;
     d.rotation.set(Math.sin(g.t * 2 + ph) * 0.2, ph, Math.sin(g.t * 3 + ph) * 0.15); d.position.set(wx(x), R0 + bob, wz(y)); d.scale.set(R0, R0 * 0.92, R0); d.updateMatrix(); R.rockIM.setMatrixAt(nr, d.matrix);
     if (flash) R.col.setHex(0xffffff); else R.col.setRGB(0.36 + 0.5 * heat, 0.32 + 0.02 * heat, 0.32 - 0.24 * heat); R.rockIM.setColorAt(nr, R.col);   
     d.rotation.set(0, 0, 0);
     for (const sgn of [-1, 1]) { const ex = wx(x) + sgn * R0 * 0.38, ey = R0 * 1.15 + bob, ez = wz(y) + R0 * 0.82;
+      if (noEye) { d.position.set(0, -50, 0); d.scale.set(0.0001, 0.0001, 0.0001); d.updateMatrix(); R.rockEyeW.setMatrixAt(nr * 2 + (sgn > 0 ? 1 : 0), d.matrix); R.rockEyeB.setMatrixAt(nr * 2 + (sgn > 0 ? 1 : 0), d.matrix); continue; }   
       d.position.set(ex, ey, ez); d.scale.set(R0 * 0.9, R0 * 0.9, R0 * 0.9); d.updateMatrix(); R.rockEyeW.setMatrixAt(nr * 2 + (sgn > 0 ? 1 : 0), d.matrix);
       d.position.set(ex, ey, ez + R0 * 0.12); d.updateMatrix(); R.rockEyeB.setMatrixAt(nr * 2 + (sgn > 0 ? 1 : 0), d.matrix); }
     nr++;
@@ -2869,7 +2870,8 @@ function render3D(g, sx, sy) {
     R.bfBody.count = R.bfCore.count = R.bfHalo.count = nb;
     for (const im of [R.bfBody, R.bfCore, R.bfHalo]) im.instanceMatrix.needsUpdate = true; if (R.bfBody.instanceColor) R.bfBody.instanceColor.needsUpdate = true;
   }
-  for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); if (em.drop) { if (em.t > em.T - 0.45) { if (em.fire) flame(em.tx, em.ty, 20 / U3 * 1.1, 0xff6a1a, em.tx, (em.T - em.t) / 0.45 * 12, true); else rock(em.tx, em.ty, 22 / U3, 0.6, em.tx, false, (em.T - em.t) / 0.45 * 12); } continue; }    flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }   
+  for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); if (em.drop) { if (em.t > em.T - 0.45) { if (em.fire) flame(em.tx, em.ty, 20 / U3 * 1.1, 0xff6a1a, em.tx, (em.T - em.t) / 0.45 * 12, true); else rock(em.tx, em.ty, 22 / U3, 0.6, em.tx, false, (em.T - em.t) / 0.45 * 12); } continue; }    if (em.stone) { rock(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 19 / U3, 0.05, em.x0 + g.t * 3, false, Math.sin(k * Math.PI) * 5, true); continue; }   
+    flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }   
   
   for (const { sp, ahead } of AH.squads) for (const [li, lane] of sp.lanes.entries()) {
     if (sp.spec) {   

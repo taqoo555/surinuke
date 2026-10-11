@@ -26,7 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 
-const VERSION = 'v134';
+const VERSION = 'v135';
 
 const CONFIG = {
   W: 360, H: 640,                 
@@ -108,7 +108,7 @@ const CONFIG = {
   CUT_T: 1.6,                     
   BOSS_STOP: 250,                 
   
-  ATK_WARN: 1.1, ATK_WARN_RAGE: 1.0, ATK_ON: 0.35, RAGE_DMG: 1.5, QUAKE_T: 0.55, QUAKE_ONE: 0.4, ATK_REST: 1.4, THROW_WARN: 0.6, THROW_T: 0.25, THROW_W: 30, BREATH_ONE: 0.6, ATK_HIT: 0.5, ATK_MAX: 0.35, DROP_R: 34, DROP_MAX: 0.15,
+  ATK_WARN: 1.1, ATK_WARN_RAGE: 1.0, ATK_ON: 0.35, RAGE_DMG: 1.5, QUAKE_T: 0.55, QUAKE_ONE: 0.4, ATK_REST: 1.4, THROW_WARN: 0.6, THROW_T: 0.25, THROW_W: 30, BREATH_ONE: 0.6, THROW_HOLD: 0.5, HOPELESS_T: 50, HOPELESS_WIN: 8, FINAL_WARN: 1.8,    ATK_HIT: 0.5, ATK_MAX: 0.35, DROP_R: 34, DROP_MAX: 0.15,
   EMBER_EVERY: 1.3, EMBER_MIN: 0.55, EMBER_T: 1.0, EMBER_R: 28, EMBER_FRAC: 0.08, EMBER_MAX: 0.3,    BOSS_RAGE: 20,   
   BOSS_HP: 1100,    CLASH: 25,         
 
@@ -649,11 +649,14 @@ function buildTrack(g) {
       
       T.push({ dist: d += G * C.SQUAD_AFTER, kind: 'squad', lanes: [ri(0, 2)], rows, cols });
       
-      const plans0 = shuffle3([
-        [slotRed(g, 0.6), 'squad'],   
-        [slotRed(g, 1.3), slotRed(g, 0.5), 'squad'],   
-        (gb2 => [guardTire(slotTire(g, C.GUARD_HP), gb2), gb2])(rng() < 0.3 ? { type: 'mul', v: 2, good: true, hitT: 0 } : slotBlue(g, 1, true)),
-      ]);
+      
+      const mul2 = () => ({ type: 'mul', v: 2, good: true, hitT: 0 });
+      
+      const smallRed = () => { const r0 = slotRed(g, 0.6); r0.v = Math.max(r0.v, -Math.round(C.RED_CAP * 0.6)); return r0; };
+      const bigRed = () => { const r0 = slotRed(g, 1.6); if (-r0.v >= C.RED_CAP) r0.v = -Math.round(C.RED_CAP * 1.6); return r0; };
+      const pool = { A: () => [bigRed(), mul2()], B: () => [mul2(), bigRed()],
+        C: () => (gb2 => [guardTire(slotTire(g, C.GUARD_HP), gb2), gb2])(rng() < 0.3 ? mul2() : slotBlue(g, 1, true)) };
+      const plans0 = shuffle3([[smallRed(), 'squad']].concat(shuffle3(['A', 'B', 'C']).slice(0, 2).map(k => pool[k]())));
       const plans = plans0.slice(); { const ti = plans.findIndex(p => p[0].type === 'tire'); if (ti === 1) { const j = rng() < 0.5 ? 0 : 2; [plans[1], plans[j]] = [plans[j], plans[1]]; } }   
       
       const w0 = d + G * 0.9, len = 60 + G + 30;
@@ -1142,6 +1145,8 @@ function update(g, dt) {
       if (u) {
         const bite = Math.ceil(e.bite * e.hp / e.max);
         kill(g, e, true);
+        
+        if (!SIM && R3.on) { fxSparks(e.x, e.y, e.kind === 'ball' ? 18 : 8); fxSmoke(e.x, e.y, e.kind === 'ball' ? 4 : 2); if (e.kind === 'ball') { sfx('thud'); shake(2); } }
         if (g.kamiReady) kamiBurst(g, e.x, e.y);   
         loseUnits(g, bite, 'enemy', e.x, e.y);
         if (g.over) return;
@@ -1179,11 +1184,15 @@ function update(g, dt) {
       
       
       B.et = (B.et == null ? 0.8 : B.et) - dt * (B.t > C.BOSS_RAGE ? 1.1 : 1) * (B.rage ? 1.1 : 1);
+      
+      B.ft = (B.ft || 0) + dt; (B.hh = B.hh || []).push([B.ft, B.hp]); while (B.hh.length > 2 && B.hh[1][0] <= B.ft - C.HOPELESS_WIN) B.hh.shift();
+      if (!B.final && B.ft >= C.HOPELESS_WIN && !B.atk && !(g.embers && g.embers.length)) { const rate = (B.hh[0][1] - B.hp) / (B.ft - B.hh[0][0]);
+        if (rate <= 0 || B.hp / rate > C.HOPELESS_T) { B.final = true; B.atk = { mv: 'final', lanes: [0, 1, 2], t: 0, warn: C.FINAL_WARN, hit: false }; B.et = 99; if (!SIM) { sfx('siren'); setTimeout(() => sfx('fire'), C.FINAL_WARN * 1000); } } }
       if (B.et <= 0 && !B.atk && !(g.embers && g.embers.length)) {
         B.et = Math.max(C.EMBER_MIN, C.EMBER_EVERY - 0.04 * g.level);
         
         const moves = BOSS_MOVES[kind] || ['ember'], mv = moves[(B.ai = (B.ai || 0) + 1) % moves.length];
-        if (mv === 'ember') for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ stone: kind === 'majin', x0: B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: 0, T: C.EMBER_T });
+        if (mv === 'ember') for (let k = 0; k < (big ? 2 : 1); k++) (g.embers = g.embers || []).push({ stone: kind === 'majin', sx: k ? 1 : -1, hl: kind === 'majin' ? 3.4 * B.r / 20 : 0, x0: kind === 'majin' ? B.x + (k ? 1 : -1) * 1.4 * B.r : B.x + rr(-B.r * 0.6, B.r * 0.6), y0: B.y, t: kind === 'majin' ? -C.THROW_HOLD : 0, tx: clamp(g.lx + rr(-70, 70), C.ROAD_L + 10, C.ROAD_R - 10), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), T: C.EMBER_T });
         else if (mv === 'drop' || mv === 'firedrop') for (let k = 0; k < (g.level <= 5 ? 2 : 3); k++)    (g.embers = g.embers || []).push({ drop: true, fire: mv === 'firedrop', r: C.DROP_R, x0: 0, y0: 0, tx: clamp(k === 0 ? g.lx : g.lx + rr(-110, 110), C.ROAD_L + 14, C.ROAD_R - 14), ty: C.LEADER_Y + rr(0, Math.min(40, g.cDepth)), t: -k * 0.25, T: C.ATK_WARN + 0.2 });
         else { 
           const safe = mv === 'ram' ? -1 : ri(0, 2), one = (mv === 'beam' && rng() < C.QUAKE_ONE) || (mv === 'breath' && rng() < C.BREATH_ONE);
@@ -1199,13 +1208,13 @@ function update(g, dt) {
       if (B.atk) {   
         const A = B.atk; A.t += dt;
         if (A.mv === 'ram') { const L = laneX(A.lanes[0]), k = clamp(A.t / A.warn, 0, 1); B.x = A.x0 + (L - A.x0) * Math.min(1, k * 2); }   
-        if (!SIM && (A.mv === 'beam' || A.mv === 'breath') && A.t >= A.warn && !A.hit) { const k = (A.t - A.warn) / C.QUAKE_T, fy = B.y + (C.LEADER_Y + 40 - B.y) * k; if (R3.on) for (const l of A.lanes) { fxSmoke(laneX(l) + rr2(-40, 40), fy, A.mv === 'beam' ? 2 : 1); if (A.mv === 'breath') fxSparks(laneX(l) + rr2(-20, 20), fy, 1); } }      
-        const hitAt = A.warn + (A.mv === 'ram' ? C.ATK_ON : A.mv === 'beam' || A.mv === 'breath' ? C.QUAKE_T : A.mv === 'throw' ? C.THROW_T : 0);
+        if (!SIM && (A.mv === 'beam' || A.mv === 'breath' || A.mv === 'final') && A.t >= A.warn && !A.hit) { const k = (A.t - A.warn) / C.QUAKE_T, fy = B.y + (C.LEADER_Y + 40 - B.y) * k; if (R3.on) for (const l of A.lanes) { fxSmoke(laneX(l) + rr2(-40, 40), fy, A.mv === 'beam' ? 2 : 1); if (A.mv === 'breath') fxSparks(laneX(l) + rr2(-20, 20), fy, 1); } }      
+        const hitAt = A.warn + (A.mv === 'ram' ? C.ATK_ON : A.mv === 'beam' || A.mv === 'breath' || A.mv === 'final' ? C.QUAKE_T : A.mv === 'throw' ? C.THROW_T : 0);
         if (!SIM && A.mv === 'throw' && !A.thrown && A.t >= A.warn) { A.thrown = true; sfx('dash'); }
         if (!A.hit && A.t >= hitAt) {   
           A.hit = true;
           let n = 0; for (const u of g.units) if (A.mv === 'throw' ? Math.abs(u.x - A.tx) < C.THROW_W + u.d / 2 : A.lanes.includes(laneOf(u.x))) n += u.w;
-          const rk = B.rage ? C.RAGE_DMG : 1; n = Math.min(Math.round(n * C.ATK_HIT * rk), Math.ceil(g.N * C.ATK_MAX * rk));
+          const rk = B.rage ? C.RAGE_DMG : 1; n = A.mv === 'final' ? g.N : Math.min(Math.round(n * C.ATK_HIT * rk), Math.ceil(g.N * C.ATK_MAX * rk));   
           if (!SIM) { sfx('thud'); if (R3.on) { for (const l of A.lanes) fxSparks(laneX(l), C.LEADER_Y, 8); if (A.mv === 'throw') { fxSparks(A.tx, C.LEADER_Y, 14); fxSmoke(A.tx, C.LEADER_Y, 3); } } }
           if (n > 0) { loseUnits(g, n, 'boss', A.mv === 'throw' ? A.tx : laneX(A.lanes[0]), C.LEADER_Y - 20); if (g.over) return; }
         }
@@ -2882,13 +2891,15 @@ function render3D(g, sx, sy) {
     const A2 = g.boss && g.boss.hp > 0 && g.boss.atk;   
     if (A2 && A2.mv === 'throw' && A2.t >= A2.warn) { const k = clamp((A2.t - A2.warn) / CONFIG.THROW_T, 0, 1); bflame(A2.x0 + (A2.tx - A2.x0) * k, g.boss.y + (CONFIG.LEADER_Y - g.boss.y) * k, 0.55, 0xff6a1a, g.t * 9, 1.6 * (1 - k) + 0.2); }
     
-    if (A2 && A2.mv === 'breath' && A2.t >= A2.warn && A2.t < A2.warn + CONFIG.QUAKE_T + CONFIG.ATK_ON) { const k = clamp((A2.t - A2.warn) / CONFIG.QUAKE_T, 0, 1), by = g.boss.y + 30, fy = by + (CONFIG.LEADER_Y + 40 - by) * k, N = 30;
+    if (A2 && (A2.mv === 'breath' || A2.mv === 'final') && A2.t >= A2.warn && A2.t < A2.warn + CONFIG.QUAKE_T + CONFIG.ATK_ON) {    const k = clamp((A2.t - A2.warn) / CONFIG.QUAKE_T, 0, 1), by = g.boss.y + 30, fy = by + (CONFIG.LEADER_Y + 40 - by) * k, N = 30;
       for (const l of A2.lanes) for (let q = 0; q < N; q++) { const u = (q / N + g.t * 2.2) % 1, yy = by + (fy - by) * u, xx = g.boss.x + (laneX(l) - g.boss.x) * Math.min(1, (yy - g.boss.y) / 120) + Math.sin(q * 2.3 + g.t * 9) * LANE_W * 0.32 * u;
         bflame(xx, yy, 0.4 + 0.95 * u, u < 0.18 ? 0xfff0a0 : u < 0.45 ? 0xffc21a : u < 0.8 ? 0xff7a1a : 0xff3a10, q * 1.7 + l * 3, 0.3 + 1.9 * (1 - u)); } }
     R.bfBody.count = R.bfCore.count = R.bfHalo.count = nb;
     for (const im of [R.bfBody, R.bfCore, R.bfHalo]) im.instanceMatrix.needsUpdate = true; if (R.bfBody.instanceColor) R.bfBody.instanceColor.needsUpdate = true;
   }
-  for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); if (em.drop) { if (em.t > em.T - 0.45) { if (em.fire) flame(em.tx, em.ty, 20 / U3 * 1.1, 0xff6a1a, em.tx, (em.T - em.t) / 0.45 * 12, true); else rock(em.tx, em.ty, 22 / U3, 0.6, em.tx, false, (em.T - em.t) / 0.45 * 12); } continue; }    if (em.stone) { rock(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 19 / U3, 0.05, em.x0 + g.t * 3, false, Math.sin(k * Math.PI) * 5, true); continue; }   
+  for (const em of g.embers || []) { const k = clamp(em.t / em.T, 0, 1); if (em.drop) { if (em.t > em.T - 0.45) { if (em.fire) flame(em.tx, em.ty, 20 / U3 * 1.1, 0xff6a1a, em.tx, (em.T - em.t) / 0.45 * 12, true); else rock(em.tx, em.ty, 22 / U3, 0.6, em.tx, false, (em.T - em.t) / 0.45 * 12); } continue; }    if (em.stone) { const B0 = g.boss, hx = em.t < 0 && B0 ? B0.x + em.sx * 1.4 * B0.r : em.x0, up = em.t < 0 ? clamp((em.t + CONFIG.THROW_HOLD) / 0.25, 0, 1) : 1;   
+      if (em.t < 0) { rock(hx, em.y0, 19 / U3 * up, 0.05, em.x0, false, em.hl * 1.05, true); continue; }
+      rock(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 19 / U3, 0.05, em.x0 + g.t * 3, false, em.hl * (1 - k) + Math.sin(k * Math.PI) * 5, true); continue; }   
     flame(em.x0 + (em.tx - em.x0) * k, em.y0 + (em.ty - em.y0) * k, 12 / U3 * 1.1, 0xff7a1a, em.x0, Math.sin(k * Math.PI) * 5, true); }   
   
   for (const { sp, ahead } of AH.squads) for (const [li, lane] of sp.lanes.entries()) {
@@ -2929,7 +2940,7 @@ function render3D(g, sx, sy) {
   
   for (const em of g.embers || []) {
     const k = clamp(em.t / em.T, 0, 1), x = em.x0 + (em.tx - em.x0) * k, y = em.y0 + (em.ty - em.y0) * k;
-    if (em.t < 0) continue;
+    if (em.t < 0 && !em.stone) continue;   
     const rg = R.rings.get(), rs = (em.r || CONFIG.EMBER_R) / U3 * (1.4 - 0.4 * k); rg.position.set(wx(em.tx), 0.05, wz(em.ty)); rg.scale.set(rs, rs, rs); rg.material.opacity = 0.3 + 0.6 * k;
   }
   R.embers.end(); R.rings.end();
@@ -2991,6 +3002,14 @@ function render3D(g, sx, sy) {
     if (u.arms) for (const a of u.arms) a.arm.rotation.z = a.sx * (0.25 + 0.2 * Math.sin(g.t * 3 + a.sx));   
     if (u.wings) for (const w of u.wings) w.w.rotation.z = w.sx * 0.25 * Math.sin(g.t * 4);   
     if (bk === 'majin') bo.position.y = 0.15 * Math.abs(Math.sin(g.t * 3));
+    if (bk === 'majin' && u.arms) for (const a of u.arms) { const em = (g.embers || []).find(q => q.stone && q.sx === a.sx);   
+      if (em && em.t < 0) a.arm.rotation.z = a.sx * (0.25 + 1.5 * clamp((em.t + CONFIG.THROW_HOLD) / 0.25, 0, 1));
+      else if (em && em.t < 0.18) a.arm.rotation.z = a.sx * (1.75 - 2.1 * em.t / 0.18); }
+    if (bk === 'majin' && Bs.atk && Bs.atk.mv === 'beam') { const A = Bs.atk, q = A.t / A.warn;   
+      if (q < 0.25) { const c = Math.sin(q / 0.25 * Math.PI / 2); bo.scale.set(r * (1 + 0.12 * c), r * (1 - 0.15 * c), r * (1 + 0.12 * c)); bo.position.y = 0; }
+      else if (q < 1) { bo.position.y = Math.sin((q - 0.25) / 0.75 * Math.PI) * 2.6 * r; for (const a of u.arms || []) a.arm.rotation.z = a.sx * 1.6; }
+      else if (q < 1 + 0.25 / A.warn) { const c = 1 - (A.t - A.warn) / 0.25; bo.scale.set(r * (1 + 0.15 * c), r * (1 - 0.18 * c), r * (1 + 0.15 * c)); bo.position.y = 0; }
+      if (q >= 1 && !A.landed && !paused) { A.landed = true; fxSmoke(Bs.x - 40, Bs.y + 10, 5); fxSmoke(Bs.x + 40, Bs.y + 10, 5); fxSmoke(Bs.x, Bs.y + 20, 4); shake(5); } }
     if (bk === 'house' || bk === 'tower') { const ph = Math.abs(Math.sin(g.t * 4)); bo.position.y = 0.25 * r * ph; bo.rotation.z = 0.07 * Math.sin(g.t * 4);   
       if (ph < 0.12 && !(R.landed) && !paused) { R.landed = true; fxSmoke(Bs.x - 30, Bs.y + 10, 2); fxSmoke(Bs.x + 30, Bs.y + 10, 2); shake(1.5); } else if (ph > 0.3) R.landed = false; }   
   }
